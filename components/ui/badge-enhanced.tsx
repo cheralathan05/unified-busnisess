@@ -58,10 +58,10 @@ export function Badge({
   return (
     <div
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full font-medium transition-colors',
+        'inline-flex items-center gap-2 rounded-full font-medium transition-colors',
         getColorClasses(color, variant),
         sizeClasses,
-        onRemove && 'pr-1.5',
+        onRemove && 'pr-2',
         className,
       )}
     >

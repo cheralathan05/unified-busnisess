@@ -87,7 +87,7 @@ export function InvoiceCard({
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div>
             <p className="text-xs text-muted-foreground mb-1">Issued</p>
-            <p className="flex items-center gap-1.5">
+            <p className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-muted-foreground" />
               {issueDate.toLocaleDateString()}
             </p>
@@ -96,7 +96,7 @@ export function InvoiceCard({
             <p className="text-xs text-muted-foreground mb-1">Due</p>
             <p
               className={cn(
-                'flex items-center gap-1.5 font-medium',
+                'flex items-center gap-2 font-medium',
                 isOverdue ? 'text-destructive' : daysUntilDue < 3 ? 'text-warning' : '',
               )}
             >
@@ -138,7 +138,7 @@ export function InvoiceCard({
             <Button
               variant="outline"
               size="sm"
-              className="flex-1 gap-1.5"
+              className="flex-1 gap-2"
               onClick={onView}
             >
               <Eye className="w-4 h-4" />
@@ -149,7 +149,7 @@ export function InvoiceCard({
             <Button
               variant="outline"
               size="sm"
-              className="flex-1 gap-1.5"
+              className="flex-1 gap-2"
               onClick={onDownload}
             >
               <Download className="w-4 h-4" />

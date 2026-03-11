@@ -123,7 +123,7 @@ export function ForecastWidget() {
           </div>
           <div>
             <p className="text-xs text-muted-foreground mb-1">Confidence</p>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2">
               <span className="text-lg font-bold text-success">{confidence}</span>
               {confidence === 'High' && <span className="text-xs">📈</span>}
             </div>
