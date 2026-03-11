@@ -10,6 +10,9 @@ const config: Config = {
 
   theme: {
     extend: {
+      spacing: {
+        "1.5": "0.375rem",
+      },
       colors: {
         background: "rgb(var(--background))",
         foreground: "rgb(var(--foreground))",
