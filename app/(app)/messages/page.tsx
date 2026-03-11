@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { useAppState } from '@/hooks/use-app-state';
-import { Search, Send, MessageSquare, Paperclip, Zap } from 'lucide-react';
+import { Search, Send, MessageSquare, Paperclip, Zap, Clock, Phone, Mail } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function MessagesPage() {
@@ -84,14 +84,27 @@ export default function MessagesPage() {
         {selectedLead ? (
           <>
             {/* Chat Header */}
-            <div className="h-16 border-b border-border/50 bg-card/80 backdrop-blur-xl flex items-center justify-between px-6">
-              <div>
-                <h2 className="font-bold text-foreground">{selectedLead.name}</h2>
-                <p className="text-xs text-muted-foreground">{selectedLead.company}</p>
+            <div className="h-16 border-b border-border/50 bg-gradient-to-r from-card to-card/50 backdrop-blur-xl flex items-center justify-between px-6">
+              <div className="flex items-center gap-4 flex-1">
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
+                  {selectedLead.name.charAt(0)}
+                </div>
+                <div>
+                  <h2 className="font-bold text-foreground">{selectedLead.name}</h2>
+                  <p className="text-xs text-muted-foreground">{selectedLead.company}</p>
+                </div>
               </div>
-              <Button variant="ghost" size="icon" title="AI Suggestions">
-                <Zap className="w-5 h-5 text-primary" />
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="icon" title="Call" className="text-muted-foreground hover:text-primary">
+                  <Phone className="w-4 h-4" />
+                </Button>
+                <Button variant="ghost" size="icon" title="Email" className="text-muted-foreground hover:text-primary">
+                  <Mail className="w-4 h-4" />
+                </Button>
+                <Button variant="ghost" size="icon" title="AI Suggestions" className="text-muted-foreground hover:text-primary">
+                  <Zap className="w-5 h-5" />
+                </Button>
+              </div>
             </div>
 
             {/* Messages */}
@@ -108,19 +121,27 @@ export default function MessagesPage() {
                   <div
                     key={idx}
                     className={cn(
-                      'flex',
+                      'flex gap-3',
                       msg.sender === 'user' ? 'justify-end' : 'justify-start'
                     )}
                   >
+                    {msg.sender !== 'user' && (
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 text-xs font-bold text-primary">
+                        {selectedLead.name.charAt(0)}
+                      </div>
+                    )}
                     <div
                       className={cn(
-                        'max-w-sm px-4 py-2 rounded-lg',
+                        'max-w-sm px-4 py-3 rounded-lg',
                         msg.sender === 'user'
-                          ? 'bg-primary text-primary-foreground rounded-br-none'
-                          : 'bg-muted text-muted-foreground rounded-bl-none'
+                          ? 'bg-gradient-primary text-primary-foreground rounded-br-none shadow-glow-primary'
+                          : 'bg-card-elevated border border-border/50 rounded-bl-none'
                       )}
                     >
                       <p className="text-sm">{msg.content}</p>
+                      <p className={cn('text-xs mt-1.5', msg.sender === 'user' ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
+                        {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </p>
                     </div>
                   </div>
                 ))

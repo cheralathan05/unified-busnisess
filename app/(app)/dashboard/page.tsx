@@ -3,6 +3,16 @@
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAppState } from '@/hooks/use-app-state';
+import { KPICardNew } from '@/components/dashboard/kpi-card-new';
+import { RevenueChartEnhanced } from '@/components/dashboard/revenue-chart-enhanced';
+import { SalesFunnelChart } from '@/components/dashboard/sales-funnel-chart';
+import { CustomerGrowthChart } from '@/components/dashboard/customer-growth-chart';
+import { TaskCompletionChart } from '@/components/dashboard/task-completion-chart';
+import { PaymentStatusChart } from '@/components/dashboard/payment-status-chart';
+import { QuickActionsWidget } from '@/components/dashboard/quick-actions-widget';
+import { BusinessHealthDashboard } from '@/components/analytics/business-health';
+import { TeamPerformanceChart } from '@/components/dashboard/team-performance-chart';
+import { ForecastWidget } from '@/components/dashboard/forecast-widget';
 import {
   BarChart3,
   TrendingUp,
@@ -11,6 +21,10 @@ import {
   Calendar,
   ArrowUpRight,
   ArrowDownRight,
+  Zap,
+  Target,
+  Activity,
+  Sparkles,
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -64,72 +78,68 @@ export default function DashboardPage() {
 
           {/* KPI Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {kpis.map((kpi, idx) => {
-          const Icon = kpi.icon;
-          return (
-            <Card key={idx} className="p-6 hover:shadow-lg transition-shadow">
-              <div className="flex items-start justify-between mb-4">
-                <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Icon className="w-6 h-6 text-primary" />
-                </div>
-                <div className={`flex items-center gap-1 text-sm font-semibold ${kpi.positive ? 'text-green-500' : 'text-orange-500'}`}>
-                  {kpi.positive ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
-                  {kpi.change}
-                </div>
-              </div>
-              <p className="text-sm text-muted-foreground mb-1">{kpi.label}</p>
-              <p className="text-2xl font-bold text-foreground">{kpi.value}</p>
-            </Card>
-          );
-        })}
+            {kpis.map((kpi, idx) => {
+              const Icon = kpi.icon;
+              return (
+                <KPICardNew
+                  key={idx}
+                  label={kpi.label}
+                  value={kpi.value}
+                  icon={<Icon className="w-5 h-5" />}
+                  trend={{
+                    value: parseInt(kpi.change.replace(/[^0-9]/g, '')),
+                    label: 'from last month',
+                  }}
+                  changeType={kpi.positive ? 'positive' : 'negative'}
+                />
+              );
+            })}
+          </div>
+
+      {/* Quick Actions */}
+      <QuickActionsWidget />
+
+      {/* Charts Grid - Row 1 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <RevenueChartEnhanced />
+        <SalesFunnelChart />
       </div>
 
-      {/* Main Content Grid */}
+      {/* Charts Grid - Row 2 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <CustomerGrowthChart />
+        <TaskCompletionChart />
+      </div>
+
+      {/* Payment Status */}
+      <PaymentStatusChart />
+
+      {/* Team Performance & Forecast */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <TeamPerformanceChart />
+        <ForecastWidget />
+      </div>
+
+      {/* Business Health & AI Insights */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Business Health - takes 2 columns on desktop */}
-        <Card className="lg:col-span-2 p-6">
-          <h2 className="text-lg font-bold text-foreground mb-4">Business Health</h2>
-          <div className="space-y-4">
-            <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/30">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-sm font-semibold text-foreground">Revenue Growth</p>
-                <span className="text-sm font-bold text-green-500">+12%</span>
-              </div>
-              <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                <div className="h-full w-3/4 bg-green-500 rounded-full"></div>
-              </div>
-            </div>
-            <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/30">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-sm font-semibold text-foreground">Lead Conversion</p>
-                <span className="text-sm font-bold text-blue-500">28%</span>
-              </div>
-              <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                <div className="h-full w-1/3 bg-blue-500 rounded-full"></div>
-              </div>
-            </div>
-            <div className="p-4 rounded-lg bg-purple-500/10 border border-purple-500/30">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-sm font-semibold text-foreground">Team Efficiency</p>
-                <span className="text-sm font-bold text-purple-500">85%</span>
-              </div>
-              <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                <div className="h-full w-5/6 bg-purple-500 rounded-full"></div>
-              </div>
-            </div>
-          </div>
-        </Card>
+        <div className="lg:col-span-2">
+          <BusinessHealthDashboard />
+        </div>
 
         {/* AI Insights */}
-        <Card className="p-6 bg-gradient-to-br from-primary/10 to-accent/5 border-primary/20">
-          <h2 className="text-lg font-bold text-foreground mb-4">AI Insights</h2>
-          <div className="space-y-3 text-sm text-muted-foreground">
-            <p>Your revenue is trending up. Continue focusing on high-value leads to maintain momentum.</p>
-            <p>3 leads have been inactive for over a week. Consider scheduling follow-up calls.</p>
-            <p>Payment collection rate is excellent at 94%. No action needed.</p>
+        <Card className="p-6 gradient-primary border-0">
+          <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+            <Sparkles className="w-5 h-5" />
+            AI Assistant
+          </h2>
+          <div className="space-y-3 text-sm text-white/90">
+            <p>✓ Your revenue is trending up. Continue focusing on high-value leads to maintain momentum.</p>
+            <p>⚠ 3 leads have been inactive for over a week. Consider scheduling follow-up calls.</p>
+            <p>✓ Payment collection rate is excellent. Keep up the momentum!</p>
           </div>
-          <Button className="w-full mt-6 bg-primary hover:bg-primary/90" size="sm">
-            Get More Insights
+          <Button className="w-full mt-6 bg-white text-primary hover:bg-white/90" size="sm">
+            View All Insights
           </Button>
         </Card>
       </div>

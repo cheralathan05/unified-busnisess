@@ -7,6 +7,10 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { KPICardNew } from "@/components/dashboard/kpi-card-new"
+import { TaskCompletionChart } from "@/components/dashboard/task-completion-chart"
+import { TaskViews } from "@/components/tasks/task-views"
 
 import { useAppState, type Task } from "@/hooks/use-app-state"
 
@@ -15,7 +19,12 @@ import {
   Filter,
   Search,
   AlertCircle,
-  Clock
+  Clock,
+  CheckCircle2,
+  List,
+  Calendar,
+  Zap,
+  ListChecks
 } from "lucide-react"
 
 export default function TasksPage() {
@@ -23,6 +32,7 @@ export default function TasksPage() {
   const { tasks, updateTask, getOverdueTasks } = useAppState()
 
   const [searchTerm, setSearchTerm] = useState("")
+  const [view, setView] = useState<'list' | 'calendar'>('list')
 
   const overdueTasks = getOverdueTasks()
 
@@ -89,90 +99,94 @@ export default function TasksPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
 
-            <Card className="p-6">
+            <KPICardNew
+              label="Total Tasks"
+              value={tasks.length}
+              icon={<ListChecks className="w-5 h-5" />}
+              subtitle={`${completedTasks.length} completed`}
+            />
 
-              <p className="text-sm text-muted-foreground">
-                Total Tasks
-              </p>
+            <KPICardNew
+              label="Completed"
+              value={completedTasks.length}
+              icon={<CheckCircle2 className="w-5 h-5" />}
+              trend={{
+                value: Math.round((completedTasks.length / tasks.length) * 100),
+                label: 'of total'
+              }}
+              changeType="positive"
+            />
 
-              <p className="text-2xl font-bold mt-1">
-                {tasks.length}
-              </p>
+            <KPICardNew
+              label="In Progress"
+              value={inProgressTasks.length}
+              icon={<Zap className="w-5 h-5" />}
+              changeType="neutral"
+              subtitle="Active tasks"
+            />
 
-            </Card>
-
-
-            <Card className="p-6">
-
-              <p className="text-sm text-muted-foreground">
-                Completed
-              </p>
-
-              <p className="text-2xl font-bold mt-1">
-                {completedTasks.length}
-              </p>
-
-            </Card>
-
-
-            <Card className="p-6">
-
-              <p className="text-sm text-muted-foreground">
-                In Progress
-              </p>
-
-              <p className="text-2xl font-bold mt-1">
-                {inProgressTasks.length}
-              </p>
-
-            </Card>
-
-
-            <Card className="p-6 border-red-500/20 bg-red-500/5">
-
-              <p className="text-sm text-muted-foreground">
-                Overdue
-              </p>
-
-              <p className="text-2xl font-bold text-red-400 mt-1">
-                {overdueTasks.length}
-              </p>
-
-            </Card>
+            <KPICardNew
+              label="Overdue"
+              value={overdueTasks.length}
+              icon={<AlertCircle className="w-5 h-5" />}
+              changeType="negative"
+              subtitle="Needs attention"
+            />
 
           </div>
 
 
 
-          {/* SEARCH */}
+          {/* TASK COMPLETION CHART */}
+          <TaskCompletionChart />
 
-          <div className="flex items-center gap-4">
+          {/* VIEW & SEARCH */}
 
-            <div className="relative flex-1 max-w-md">
+          <div className="flex items-center justify-between gap-4">
 
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"/>
+            <div className="flex items-center gap-4 flex-1">
 
-              <Input
-                placeholder="Search tasks..."
-                value={searchTerm}
-                onChange={(e)=>setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
+              <div className="relative flex-1 max-w-md">
+
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"/>
+
+                <Input
+                  placeholder="Search tasks..."
+                  value={searchTerm}
+                  onChange={(e)=>setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+
+              </div>
+
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+              >
+
+                <Filter className="w-4 h-4"/>
+
+                Filter
+
+              </Button>
 
             </div>
 
-
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2"
-            >
-
-              <Filter className="w-4 h-4"/>
-
-              Filter
-
-            </Button>
+            {/* View Toggle */}
+            <Tabs value={view} onValueChange={(v) => setView(v as any)}>
+              <TabsList>
+                <TabsTrigger value="list" className="gap-1">
+                  <List className="w-4 h-4" />
+                  <span className="hidden sm:inline">List</span>
+                </TabsTrigger>
+                <TabsTrigger value="calendar" className="gap-1">
+                  <Calendar className="w-4 h-4" />
+                  <span className="hidden sm:inline">Calendar</span>
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
 
           </div>
 

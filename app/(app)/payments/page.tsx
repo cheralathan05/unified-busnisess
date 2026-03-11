@@ -6,7 +6,9 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { useAppState } from '@/hooks/use-app-state';
-import { Plus, Search, DollarSign, Calendar } from 'lucide-react';
+import { KPICardNew } from '@/components/dashboard/kpi-card-new';
+import { PaymentStatusChart } from '@/components/dashboard/payment-status-chart';
+import { Plus, Search, DollarSign, Calendar, TrendingUp, Clock, CheckCircle2 } from 'lucide-react';
 
 const statusColors: Record<string, string> = {
   pending: 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/30',
@@ -45,21 +47,35 @@ export default function PaymentsPage() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="p-6 hover:shadow-lg transition-shadow">
-          <p className="text-sm text-muted-foreground mb-2 font-semibold">Total Revenue</p>
-          <p className="text-3xl font-bold text-foreground mt-2">₹{totalRevenue.toLocaleString()}</p>
-          <p className="text-xs text-muted-foreground mt-3">{payments.filter(p => p.status === 'completed').length} completed</p>
-        </Card>
-        <Card className="p-6 hover:shadow-lg transition-shadow border-yellow-500/20 bg-yellow-500/5">
-          <p className="text-sm text-muted-foreground mb-2 font-semibold">Pending Payments</p>
-          <p className="text-3xl font-bold text-yellow-400 mt-2">₹{pendingAmount.toLocaleString()}</p>
-          <p className="text-xs text-muted-foreground mt-3">{payments.filter(p => p.status === 'pending').length} pending</p>
-        </Card>
-        <Card className="p-6 hover:shadow-lg transition-shadow border-red-500/20 bg-red-500/5">
-          <p className="text-sm text-muted-foreground mb-2 font-semibold">Failed Payments</p>
-          <p className="text-3xl font-bold text-red-400 mt-2">{payments.filter(p => p.status === 'failed').length}</p>
-          <p className="text-xs text-muted-foreground mt-3">Needs attention</p>
-        </Card>
+        <KPICardNew
+          label="Total Revenue"
+          value={`₹${totalRevenue.toLocaleString()}`}
+          icon={<TrendingUp className="w-5 h-5" />}
+          trend={{
+            value: 12,
+            label: 'from last month'
+          }}
+          changeType="positive"
+          subtitle={`${payments.filter(p => p.status === 'completed').length} completed`}
+        />
+        <KPICardNew
+          label="Pending Payments"
+          value={`₹${pendingAmount.toLocaleString()}`}
+          icon={<Clock className="w-5 h-5" />}
+          changeType="negative"
+          subtitle={`${payments.filter(p => p.status === 'pending').length} invoices`}
+        />
+        <KPICardNew
+          label="Collection Rate"
+          value="94%"
+          icon={<CheckCircle2 className="w-5 h-5" />}
+          trend={{
+            value: 8,
+            label: 'improvement'
+          }}
+          changeType="positive"
+          subtitle="Overall success rate"
+        />
       </div>
 
       {/* Search Bar */}
@@ -111,6 +127,9 @@ export default function PaymentsPage() {
           ))
         )}
       </div>
+
+      {/* Payment Analytics Chart */}
+      <PaymentStatusChart />
         </div>
       </div>
     </div>

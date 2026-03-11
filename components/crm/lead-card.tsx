@@ -6,8 +6,10 @@ import { Lead } from "@/hooks/use-app-state"
 
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { LeadScoreIndicator } from "@/components/crm/lead-score-indicator"
+import { DealProbabilityIndicator } from "@/components/crm/deal-probability-indicator"
 
-import { Mail, Phone } from "lucide-react"
+import { Mail, Phone, Calendar, BarChart3 } from "lucide-react"
 
 interface Props {
   lead: Lead
@@ -34,11 +36,10 @@ export default function LeadCard({ lead }: Props) {
       className="block"
     >
 
-      <Card className="p-4 hover:shadow-lg transition-all border-border/50">
+      <Card className="p-4 hover:shadow-lg transition-all border-border/50 hover:border-primary/50">
 
-        <div className="flex items-start justify-between gap-4">
-
-          {/* LEFT SIDE */}
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4 mb-4">
 
           <div className="flex-1 min-w-0">
 
@@ -50,60 +51,56 @@ export default function LeadCard({ lead }: Props) {
               {lead.company}
             </p>
 
+          </div>
 
-            {/* CONTACT INFO */}
+          {/* Lead Score Indicator */}
+          <LeadScoreIndicator 
+            score={Math.min(100, Math.max(0, lead.dealValue / 1000))}
+            size="md"
+            showLabel={true}
+          />
 
-            <div className="flex flex-wrap gap-4 mt-3 text-sm text-muted-foreground">
+        </div>
 
-              {lead.email && (
+        {/* Contact Info */}
+        <div className="flex flex-wrap gap-3 mb-4 text-sm text-muted-foreground">
 
-                <div className="flex items-center gap-1 truncate">
-
-                  <Mail className="w-4 h-4" />
-
-                  <span className="truncate">
-                    {lead.email}
-                  </span>
-
-                </div>
-
-              )}
-
-              {lead.phone && (
-
-                <div className="flex items-center gap-1">
-
-                  <Phone className="w-4 h-4" />
-
-                  {lead.phone}
-
-                </div>
-
-              )}
-
+          {lead.email && (
+            <div className="flex items-center gap-1 truncate">
+              <Mail className="w-4 h-4" />
+              <span className="truncate text-xs">{lead.email}</span>
             </div>
+          )}
 
+          {lead.phone && (
+            <div className="flex items-center gap-1">
+              <Phone className="w-4 h-4" />
+              <span className="text-xs">{lead.phone}</span>
+            </div>
+          )}
+
+        </div>
+
+        {/* Deal Info */}
+        <div className="mb-4 p-3 rounded-lg bg-muted/50 border border-border/50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-foreground">Deal Value</span>
+            <span className="text-sm font-bold text-primary">₹{lead.dealValue.toLocaleString()}</span>
           </div>
+          <DealProbabilityIndicator 
+            probability={Math.min(100, Math.max(0, lead.dealValue / 1000))}
+            stage={lead.status}
+            size="md"
+            showPercentage={true}
+          />
+        </div>
 
-
-          {/* RIGHT SIDE */}
-
-          <div className="text-right flex-shrink-0">
-
-            <p className="font-semibold text-foreground">
-
-              ₹{lead.dealValue.toLocaleString()}
-
-            </p>
-
-            <Badge className={statusClass}>
-
-              {lead.status}
-
-            </Badge>
-
-          </div>
-
+        {/* Status Badge */}
+        <div className="flex items-center justify-between">
+          <Badge className={statusClass}>
+            {lead.status}
+          </Badge>
+          <span className="text-xs text-muted-foreground">Updated today</span>
         </div>
 
       </Card>

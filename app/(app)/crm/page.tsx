@@ -13,11 +13,14 @@ import LeadSearch from "@/components/crm/lead-search"
 import LeadFilters from "@/components/crm/lead-filters"
 import LeadPagination from "@/components/crm/lead-pagination"
 import BulkActions from "@/components/crm/bulk-actions"
+import { CRMInsights } from "@/components/crm/crm-insights"
+import { LeadTable } from "@/components/crm/lead-table"
 
 import {
   Plus,
   List,
-  Kanban as KanbanIcon
+  Kanban as KanbanIcon,
+  BarChart3,
 } from "lucide-react"
 
 export default function CRMPage() {
@@ -100,6 +103,12 @@ export default function CRMPage() {
 
             </Link>
 
+          </div>
+
+          {/* CRM INSIGHTS */}
+
+          <div>
+            <CRMInsights />
           </div>
 
           {/* SEARCH + FILTER */}
