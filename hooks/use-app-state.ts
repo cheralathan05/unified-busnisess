@@ -1,263 +1,168 @@
 import { create } from "zustand"
+import { api } from "@/lib/api"
 
 /* ---------------- TYPES ---------------- */
 
 export interface Lead {
-  id: string
-  name: string
-  email: string
-  phone: string
-  company: string
-  dealValue: number
-  status: "New" | "Contacted" | "Proposal" | "Negotiation" | "Won" | "Lost"
-  notes: string
-  createdAt: Date
+id: string
+name: string
+email: string
+phone: string
+company: string
+dealValue: number
+status:
+| "New"
+| "Contacted"
+| "Proposal"
+| "Negotiation"
+| "Won"
+| "Lost"
+notes: string
+createdAt: string
+
+tags?: string[]
+probability?: number
+
+calls?: number
+emails?: number
+
+nextFollowUp?: string
 }
 
 export interface Task {
-  id: string
-  title: string
-  description: string
-  dueDate: Date
-  priority: "low" | "medium" | "high"
-  status: "todo" | "in-progress" | "done"
-  assignedTo?: string
-  leadId?: string
+id: string
+title: string
+description: string
+dueDate: string
+priority: "low" | "medium" | "high"
+status: "todo" | "in-progress" | "done"
+assignedTo?: string
+leadId?: string
 }
 
 export interface Payment {
-  id: string
-  customerId: string
-  amount: number
-  method: "bank" | "card" | "cash" | "other"
-  date: Date
-  notes: string
-  status: "pending" | "completed" | "failed"
+id: string
+customerId: string
+amount: number
+method: "bank" | "card" | "cash" | "other"
+date: string
+notes: string
+status: "pending" | "completed" | "failed"
 }
-
-export interface Message {
-  id: string
-  leadId: string
-  content: string
-  sender: "user" | "contact"
-  timestamp: Date
-}
-
-/* ---------------- STORE TYPE ---------------- */
 
 interface AppState {
 
-  leads: Lead[]
-  tasks: Task[]
-  payments: Payment[]
-  messages: Message[]
+leads: Lead[]
+tasks: Task[]
+payments: Payment[]
 
-  /* lead actions */
+loading: boolean
 
-  addLead: (lead: Omit<Lead, "id" | "createdAt">) => void
-  updateLead: (id: string, updates: Partial<Lead>) => void
-  deleteLead: (id: string) => void
-  getLeadById: (id: string) => Lead | undefined
+/* fetch */
 
-  /* task actions */
+fetchLeads: () => Promise<void>
+fetchTasks: () => Promise<void>
+fetchPayments: () => Promise<void>
 
-  addTask: (task: Omit<Task, "id">) => void
-  updateTask: (id: string, updates: Partial<Task>) => void
-  deleteTask: (id: string) => void
-  getTasksByLead: (leadId: string) => Task[]
+/* lead actions */
 
-  /* payment actions */
+addLead: (lead: Partial<Lead>) => Promise<void>
+updateLead: (id: string, updates: Partial<Lead>) => Promise<void>
+deleteLead: (id: string) => Promise<void>
 
-  addPayment: (payment: Omit<Payment, "id">) => void
-  updatePayment: (id: string, updates: Partial<Payment>) => void
-  deletePayment: (id: string) => void
+/* analytics */
 
-  /* message actions */
-
-  addMessage: (message: Omit<Message, "id" | "timestamp">) => void
-  deleteMessage: (id: string) => void
-
-  /* analytics */
-
-  getTotalRevenue: () => number
-  getLeadCount: () => number
-  getTaskCount: () => number
-  getOverdueTasks: () => Task[]
+getTotalRevenue: () => number
 }
 
 /* ---------------- STORE ---------------- */
 
 export const useAppState = create<AppState>((set, get) => ({
 
-  /* ---------------- LEADS ---------------- */
+leads: [],
+tasks: [],
+payments: [],
 
-  leads: [
+loading: false,
 
-    {
-      id: "1",
-      name: "Ravi Kumar",
-      email: "ravi@example.com",
-      phone: "+91-9876543210",
-      company: "Tech Solutions",
-      dealValue: 50000,
-      status: "Proposal",
-      notes: "Interested in website development",
-      createdAt: new Date("2024-01-15")
-    },
+/* ---------------- FETCH DATA ---------------- */
 
-    {
-      id: "2",
-      name: "Priya Sharma",
-      email: "priya@example.com",
-      phone: "+91-9876543211",
-      company: "Fashion Retail",
-      dealValue: 75000,
-      status: "Contacted",
-      notes: "E-commerce platform needed",
-      createdAt: new Date("2024-01-20")
-    },
+fetchLeads: async () => {
 
-    {
-      id: "3",
-      name: "Amit Singh",
-      email: "amit@example.com",
-      phone: "+91-9876543212",
-      company: "Logistics Co.",
-      dealValue: 120000,
-      status: "Won",
-      notes: "Closed deal for tracking system",
-      createdAt: new Date("2024-01-10")
-    }
+set({ loading: true })
 
-  ],
+const res = await api.get("/leads")
 
-  addLead: (lead) =>
-    set((state) => ({
-      leads: [
-        {
-          ...lead,
-          id: Date.now().toString(),
-          createdAt: new Date()
-        },
-        ...state.leads
-      ]
-    })),
+set({
+  leads: res.data || [],
+  loading: false
+})
 
-  updateLead: (id, updates) =>
-    set((state) => ({
-      leads: state.leads.map((lead) =>
-        lead.id === id ? { ...lead, ...updates } : lead
-      )
-    })),
+},
 
-  deleteLead: (id) =>
-    set((state) => ({
-      leads: state.leads.filter((lead) => lead.id !== id)
-    })),
+fetchTasks: async () => {
 
-  getLeadById: (id) => {
-    return get().leads.find((lead) => lead.id === id)
-  },
+const res = await api.get("/tasks")
 
-  /* ---------------- TASKS ---------------- */
+set({
+  tasks: res.data || []
+})
 
-  tasks: [],
+},
 
-  addTask: (task) =>
-    set((state) => ({
-      tasks: [
-        {
-          ...task,
-          id: Date.now().toString()
-        },
-        ...state.tasks
-      ]
-    })),
+fetchPayments: async () => {
 
-  updateTask: (id, updates) =>
-    set((state) => ({
-      tasks: state.tasks.map((task) =>
-        task.id === id ? { ...task, ...updates } : task
-      )
-    })),
+const res = await api.get("/payments")
 
-  deleteTask: (id) =>
-    set((state) => ({
-      tasks: state.tasks.filter((task) => task.id !== id)
-    })),
+set({
+  payments: res.data || []
+})
 
-  getTasksByLead: (leadId) => {
-    return get().tasks.filter((task) => task.leadId === leadId)
-  },
+},
 
-  /* ---------------- PAYMENTS ---------------- */
+/* ---------------- ADD LEAD ---------------- */
 
-  payments: [],
+addLead: async (lead) => {
 
-  addPayment: (payment) =>
-    set((state) => ({
-      payments: [
-        {
-          ...payment,
-          id: Date.now().toString()
-        },
-        ...state.payments
-      ]
-    })),
+const res = await api.post("/leads", lead)
 
-  updatePayment: (id, updates) =>
-    set((state) => ({
-      payments: state.payments.map((p) =>
-        p.id === id ? { ...p, ...updates } : p
-      )
-    })),
+set((state) => ({
+  leads: [res.data, ...state.leads]
+}))
+},
 
-  deletePayment: (id) =>
-    set((state) => ({
-      payments: state.payments.filter((p) => p.id !== id)
-    })),
+/* ---------------- UPDATE LEAD ---------------- */
 
-  /* ---------------- MESSAGES ---------------- */
+updateLead: async (id, updates) => {
 
-  messages: [],
+const res = await api.put(`/leads/${id}`, updates)
 
-  addMessage: (message) =>
-    set((state) => ({
-      messages: [
-        {
-          ...message,
-          id: Date.now().toString(),
-          timestamp: new Date()
-        },
-        ...state.messages
-      ]
-    })),
+set((state) => ({
+  leads: state.leads.map((lead) =>
+    lead.id === id ? res.data : lead
+  )
+}))
 
-  deleteMessage: (id) =>
-    set((state) => ({
-      messages: state.messages.filter((m) => m.id !== id)
-    })),
+},
 
-  /* ---------------- ANALYTICS ---------------- */
+/* ---------------- DELETE LEAD ---------------- */
 
-  getTotalRevenue: () =>
-    get().payments.reduce(
-      (sum, p) => (p.status === "completed" ? sum + p.amount : sum),
-      0
-    ),
+deleteLead: async (id) => {
 
-  getLeadCount: () => get().leads.length,
+await api.delete(`/leads/${id}`)
 
-  getTaskCount: () => get().tasks.length,
+set((state) => ({
+  leads: state.leads.filter((l) => l.id !== id)
+}))
 
-  getOverdueTasks: () => {
+},
 
-    const now = new Date()
+/* ---------------- ANALYTICS ---------------- */
 
-    return get().tasks.filter(
-      (task) => task.dueDate < now && task.status !== "done"
-    )
-
-  }
+getTotalRevenue: () =>
+get().payments.reduce(
+(sum, p) => (p.status === "completed" ? sum + p.amount : sum),
+0
+)
 
 }))

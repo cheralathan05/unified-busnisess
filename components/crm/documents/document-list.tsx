@@ -1,11 +1,17 @@
 'use client'
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
 import DocumentItem from "./document-item"
+
 import { CRMDocument } from "./document-utils"
 
 import { Card } from "@/components/ui/card"
+
+import {
+  getDocuments,
+  deleteDocument
+} from "@/lib/services/document.service"
 
 interface Props {
 
@@ -22,18 +28,70 @@ export default function DocumentList({
   const [documents, setDocuments] =
     useState<CRMDocument[]>([])
 
-  function deleteDocument(id: string) {
+  const [loading, setLoading] =
+    useState(true)
 
-    setDocuments(
-      documents.filter(d => d.id !== id)
-    )
+  async function loadDocuments() {
+
+    try {
+
+      const res = await getDocuments(leadId)
+
+      setDocuments(res.data || [])
+
+    } catch (error) {
+
+      console.error("Load documents failed", error)
+
+    } finally {
+
+      setLoading(false)
+
+    }
 
   }
 
-  const leadDocs =
-    documents.filter(d => d.leadId === leadId)
+  async function handleDelete(id: string) {
 
-  if (leadDocs.length === 0)
+    try {
+
+      await deleteDocument(id)
+
+      setDocuments(prev =>
+        prev.filter(d => d.id !== id)
+      )
+
+    } catch (error) {
+
+      console.error("Delete failed", error)
+
+    }
+
+  }
+
+  useEffect(() => {
+
+    loadDocuments()
+
+  }, [leadId])
+
+  if (loading)
+
+    return (
+
+      <Card className="p-6 text-center">
+
+        <p className="text-muted-foreground">
+
+          Loading documents...
+
+        </p>
+
+      </Card>
+
+    )
+
+  if (documents.length === 0)
 
     return (
 
@@ -53,13 +111,13 @@ export default function DocumentList({
 
     <div className="space-y-2">
 
-      {leadDocs.map((doc) => (
+      {documents.map((doc) => (
 
         <DocumentItem
 
           key={doc.id}
           document={doc}
-          onDelete={deleteDocument}
+          onDeleted={handleDelete}
 
         />
 

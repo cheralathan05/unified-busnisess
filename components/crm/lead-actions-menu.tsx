@@ -1,83 +1,113 @@
 'use client'
 
-import { Lead, useAppState } from "@/hooks/use-app-state"
+import { Lead } from "@/lib/services/lead.service"
+
+import { deleteLead } from "@/lib/services/lead.service"
+
 import { Button } from "@/components/ui/button"
+
 import { MoreVertical } from "lucide-react"
+
 import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem
+DropdownMenu,
+DropdownMenuTrigger,
+DropdownMenuContent,
+DropdownMenuItem
 } from "@/components/ui/dropdown-menu"
 
 import { useRouter } from "next/navigation"
 
 interface Props {
-  lead: Lead
+
+lead: Lead
+refreshLeads?: () => void
+
 }
 
-export default function LeadActionsMenu({ lead }: Props) {
+export default function LeadActionsMenu({
 
-  const router = useRouter()
-  const { deleteLead } = useAppState()
+lead,
+refreshLeads
 
-  const handleDelete = () => {
+}: Props) {
 
-    if (confirm("Delete this lead?")) {
-      deleteLead(lead.id)
-    }
+const router = useRouter()
 
-  }
+async function handleDelete(){
 
-  return (
+const confirmDelete = confirm(
+"Delete this lead?"
+)
 
-    <DropdownMenu>
+if(!confirmDelete) return
 
-      <DropdownMenuTrigger asChild>
+try{
 
-        <Button variant="ghost" size="icon">
-          <MoreVertical className="w-4 h-4" />
-        </Button>
+await deleteLead(lead.id)
 
-      </DropdownMenuTrigger>
+refreshLeads?.()
 
-      <DropdownMenuContent align="end">
+}catch(err){
 
-        <DropdownMenuItem
-          onClick={() => router.push(`/crm/${lead.id}`)}
-        >
-          View Lead
-        </DropdownMenuItem>
+console.error("Delete lead failed",err)
 
-        <DropdownMenuItem
-          onClick={() => router.push(`/crm/${lead.id}/edit`)}
-        >
-          Edit Lead
-        </DropdownMenuItem>
+alert("Failed to delete lead")
 
-        <DropdownMenuItem
-          onClick={() => window.location.href = `mailto:${lead.email}`}
-        >
-          Send Email
-        </DropdownMenuItem>
+}
 
-        <DropdownMenuItem
-          onClick={() => window.location.href = `tel:${lead.phone}`}
-        >
-          Call
-        </DropdownMenuItem>
+}
 
-        <DropdownMenuItem
-          className="text-red-500"
-          onClick={handleDelete}
-        >
-          Delete
-        </DropdownMenuItem>
+return(
 
-      </DropdownMenuContent>
+<DropdownMenu>
 
-    </DropdownMenu>
+<DropdownMenuTrigger asChild>
 
-  )
+<Button variant="ghost" size="icon">
+
+<MoreVertical className="w-4 h-4"/>
+
+</Button>
+
+</DropdownMenuTrigger>
+
+<DropdownMenuContent align="end">
+
+<DropdownMenuItem
+onClick={()=>router.push(`/crm/${lead.id}`)}
+>
+View Lead
+</DropdownMenuItem>
+
+<DropdownMenuItem
+onClick={()=>router.push(`/crm/${lead.id}/edit`)}
+>
+Edit Lead
+</DropdownMenuItem>
+
+<DropdownMenuItem
+onClick={()=>window.open(`mailto:${lead.email}`)}
+>
+Send Email
+</DropdownMenuItem>
+
+<DropdownMenuItem
+onClick={()=>window.open(`tel:${lead.phone}`)}
+>
+Call
+</DropdownMenuItem>
+
+<DropdownMenuItem
+className="text-red-500"
+onClick={handleDelete}
+>
+Delete
+</DropdownMenuItem>
+
+</DropdownMenuContent>
+
+</DropdownMenu>
+
+)
 
 }

@@ -1,37 +1,74 @@
 'use client'
 
-import { Lead } from "@/hooks/use-app-state"
-import { Button } from "@/components/ui/button"
-import { useAppState } from "@/hooks/use-app-state"
+import { useRouter } from "next/navigation"
 
-interface Props{
-lead:Lead
+import { Button } from "@/components/ui/button"
+
+import { deleteLead } from "@/lib/services/lead.service"
+
+interface Lead {
+
+  id:string
+  name:string
+
+}
+
+interface Props {
+
+  lead:Lead
+
 }
 
 export default function LeadActions({lead}:Props){
 
-const {deleteLead} = useAppState()
+  const router = useRouter()
 
-return(
+  async function handleDelete(){
 
-<div className="flex gap-2">
+    const confirmDelete = confirm("Delete this lead?")
 
-<Button
-variant="outline"
-onClick={()=>window.location.href=`/crm/${lead.id}/edit`}
->
-Edit
-</Button>
+    if(!confirmDelete) return
 
-<Button
-variant="destructive"
-onClick={()=>deleteLead(lead.id)}
->
-Delete
-</Button>
+    try{
 
-</div>
+      await deleteLead(lead.id)
 
-)
+      router.refresh()
+
+    }catch(err){
+
+      console.error("Delete failed",err)
+
+      alert("Failed to delete lead")
+
+    }
+
+  }
+
+  return(
+
+    <div className="flex gap-2">
+
+      <Button
+        variant="outline"
+        onClick={()=>router.push(`/crm/${lead.id}/edit`)}
+      >
+
+        Edit
+
+      </Button>
+
+      <Button
+        variant="destructive"
+        onClick={handleDelete}
+      >
+
+        Delete
+
+      </Button>
+
+    </div>
+
+  )
 
 }

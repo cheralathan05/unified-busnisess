@@ -2,84 +2,108 @@
 
 import { Badge } from "@/components/ui/badge"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
+ Select,
+ SelectContent,
+ SelectItem,
+ SelectTrigger,
+ SelectValue
 } from "@/components/ui/select"
 
+import { updateLead } from "@/lib/services/lead.service"
+
 export type LeadPriority =
-  | "Low"
-  | "Medium"
-  | "High"
-  | "Urgent"
+ | "LOW"
+ | "MEDIUM"
+ | "HIGH"
+ | "URGENT"
 
 interface Props {
-  value?: LeadPriority
-  onChange: (priority: LeadPriority) => void
+
+ leadId: string
+ value?: LeadPriority
+ onUpdated?: () => void
+
 }
 
 const priorityColors: Record<LeadPriority,string> = {
 
-  Low: "bg-blue-500/10 text-blue-400 border border-blue-500/30",
+ LOW: "bg-blue-500/10 text-blue-400 border border-blue-500/30",
 
-  Medium: "bg-yellow-500/10 text-yellow-400 border border-yellow-500/30",
+ MEDIUM: "bg-yellow-500/10 text-yellow-400 border border-yellow-500/30",
 
-  High: "bg-orange-500/10 text-orange-400 border border-orange-500/30",
+ HIGH: "bg-orange-500/10 text-orange-400 border border-orange-500/30",
 
-  Urgent: "bg-red-500/10 text-red-400 border border-red-500/30"
+ URGENT: "bg-red-500/10 text-red-400 border border-red-500/30"
 
 }
 
 export default function LeadPriority({
 
-  value = "Medium",
-  onChange
+ leadId,
+ value = "MEDIUM",
+ onUpdated
 
-}: Props) {
+}: Props){
 
-  return (
+ async function handleChange(priority: LeadPriority){
 
-    <div className="flex items-center gap-3">
+  try{
 
-      <Badge className={priorityColors[value]}>
-        {value}
-      </Badge>
+   await updateLead(leadId,{
+    priority
+   })
 
-      <Select
-        value={value}
-        onValueChange={(v)=>onChange(v as LeadPriority)}
-      >
+   onUpdated?.()
 
-        <SelectTrigger className="w-[140px]">
-          <SelectValue placeholder="Priority"/>
-        </SelectTrigger>
+  }catch(err){
 
-        <SelectContent>
+   console.error("Priority update failed",err)
 
-          <SelectItem value="Low">
-            Low
-          </SelectItem>
+  }
 
-          <SelectItem value="Medium">
-            Medium
-          </SelectItem>
+ }
 
-          <SelectItem value="High">
-            High
-          </SelectItem>
+ return(
 
-          <SelectItem value="Urgent">
-            Urgent
-          </SelectItem>
+  <div className="flex items-center gap-3">
 
-        </SelectContent>
+   <Badge className={priorityColors[value]}>
+    {value}
+   </Badge>
 
-      </Select>
+   <Select
+    value={value}
+    onValueChange={(v)=>handleChange(v as LeadPriority)}
+   >
 
-    </div>
+    <SelectTrigger className="w-[140px]">
+     <SelectValue placeholder="Priority"/>
+    </SelectTrigger>
 
-  )
+    <SelectContent>
+
+     <SelectItem value="LOW">
+      Low
+     </SelectItem>
+
+     <SelectItem value="MEDIUM">
+      Medium
+     </SelectItem>
+
+     <SelectItem value="HIGH">
+      High
+     </SelectItem>
+
+     <SelectItem value="URGENT">
+      Urgent
+     </SelectItem>
+
+    </SelectContent>
+
+   </Select>
+
+  </div>
+
+ )
 
 }

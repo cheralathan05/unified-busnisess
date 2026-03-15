@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 
 import { Card } from '@/components/ui/card'
@@ -9,304 +9,389 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
-import { useAppState } from '@/hooks/use-app-state'
+import { getLeads } from '@/lib/services/lead.service'
 
 import {
-  Plus,
-  Search,
-  List,
-  Kanban as KanbanIcon,
-  Mail,
-  Phone
+Plus,
+Search,
+List,
+Kanban as KanbanIcon,
+Mail,
+Phone
 } from 'lucide-react'
 
 const statuses = [
-  "New",
-  "Contacted",
-  "Proposal",
-  "Negotiation",
-  "Won",
-  "Lost"
-] as const
+"NEW",
+"CONTACTED",
+"QUALIFIED",
+"WON",
+"LOST"
+]
 
-const statusColors: Record<string, string> = {
-  New: 'bg-blue-500/10 text-blue-400 border border-blue-500/30',
-  Contacted: 'bg-purple-500/10 text-purple-400 border border-purple-500/30',
-  Proposal: 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/30',
-  Negotiation: 'bg-orange-500/10 text-orange-400 border border-orange-500/30',
-  Won: 'bg-green-500/10 text-green-400 border border-green-500/30',
-  Lost: 'bg-red-500/10 text-red-400 border border-red-500/30'
+const statusColors:Record<string,string> = {
+
+NEW:'bg-blue-500/10 text-blue-400 border border-blue-500/30',
+
+CONTACTED:'bg-purple-500/10 text-purple-400 border border-purple-500/30',
+
+QUALIFIED:'bg-yellow-500/10 text-yellow-400 border border-yellow-500/30',
+
+WON:'bg-green-500/10 text-green-400 border border-green-500/30',
+
+LOST:'bg-red-500/10 text-red-400 border border-red-500/30'
+
 }
 
-export default function CRMPage() {
+export default function CRMPage(){
 
-  const { leads } = useAppState()
+/* ---------------- DATA ---------------- */
 
-  const [view, setView] = useState<'list' | 'kanban'>('list')
-  const [searchQuery, setSearchQuery] = useState('')
+const [leads,setLeads] = useState<any[]>([])
+const [loading,setLoading] = useState(true)
 
-  /* Filter Leads */
+/* ---------------- UI ---------------- */
 
-  const filteredLeads = useMemo(() => {
+const [view,setView] = useState<'list'|'kanban'>('list')
+const [searchQuery,setSearchQuery] = useState('')
 
-    return leads.filter((lead) =>
-      lead.name.toLowerCase().includes(searchQuery.toLowerCase())
-    )
+/* ---------------- FETCH LEADS ---------------- */
 
-  }, [leads, searchQuery])
+async function loadLeads(){
 
-  /* Group Leads for Kanban */
+try{
 
-  const leadsByStatus = useMemo(() => {
+const res = await getLeads()
 
-    const grouped: Record<string, typeof leads> = {}
+setLeads(res.data || [])
 
-    statuses.forEach(status => {
-      grouped[status] = filteredLeads.filter(l => l.status === status)
-    })
+}catch(err){
 
-    return grouped
+console.error("Failed to load leads",err)
 
-  }, [filteredLeads])
+}
 
-  return (
+setLoading(false)
 
-    <div className="w-full h-full flex flex-col">
+}
 
-      <div className="flex-1 overflow-y-auto">
+useEffect(()=>{
 
-        <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto">
+loadLeads()
 
-          {/* HEADER */}
+},[])
 
-          <div className="flex items-center justify-between">
+/* ---------------- FILTER ---------------- */
 
-            <div>
+const filteredLeads = useMemo(()=>{
 
-              <h1 className="text-3xl font-bold">
-                CRM & Leads
-              </h1>
+return leads.filter(lead =>
 
-              <p className="text-muted-foreground mt-1">
-                Manage your sales pipeline and customer relationships
-              </p>
+lead.name
+?.toLowerCase()
+.includes(searchQuery.toLowerCase())
 
-            </div>
+)
 
-            <Link href="/crm/add-lead">
+},[leads,searchQuery])
 
-              <Button className="gap-2">
+/* ---------------- GROUP ---------------- */
 
-                <Plus className="w-5 h-5" />
+const leadsByStatus = useMemo(()=>{
 
-                Add Lead
+const grouped:any = {}
 
-              </Button>
+statuses.forEach(status=>{
 
-            </Link>
+grouped[status] =
+filteredLeads.filter(l => l.status === status)
 
-          </div>
+})
 
-          {/* SEARCH + VIEW */}
+return grouped
 
-          <div className="flex items-center gap-4 flex-wrap">
+},[filteredLeads])
 
-            <div className="relative flex-1 max-w-md">
+/* ---------------- LOADING ---------------- */
 
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+if(loading){
 
-              <Input
-                placeholder="Search leads..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
+return(
 
-            </div>
+<div className="p-10 text-center">
+Loading CRM...
+</div>
 
-            <Tabs
-              value={view}
-              onValueChange={(v) => setView(v as any)}
-            >
+)
 
-              <TabsList>
+}
 
-                <TabsTrigger value="list">
-                  <List className="w-4 h-4 mr-2" />
-                  List
-                </TabsTrigger>
+/* ---------------- PAGE ---------------- */
 
-                <TabsTrigger value="kanban">
-                  <KanbanIcon className="w-4 h-4 mr-2" />
-                  Board
-                </TabsTrigger>
+return(
 
-              </TabsList>
+<div className="w-full h-full flex flex-col">
 
-            </Tabs>
+<div className="flex-1 overflow-y-auto">
 
-          </div>
+<div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto">
 
-          {/* LIST VIEW */}
+{/* HEADER */}
 
-          {view === 'list' && (
+<div className="flex items-center justify-between">
 
-            <div className="space-y-3">
+<div>
 
-              {filteredLeads.length === 0 ? (
+<h1 className="text-3xl font-bold">
 
-                <Card className="p-12 text-center">
+CRM & Leads
 
-                  <p className="text-muted-foreground">
-                    No leads found. Add a new lead to get started.
-                  </p>
+</h1>
 
-                </Card>
+<p className="text-muted-foreground mt-1">
 
-              ) : (
+Manage your sales pipeline
 
-                filteredLeads.map((lead) => (
+</p>
 
-                  <Link
-                    key={lead.id}
-                    href={`/crm/${lead.id}`}
-                  >
+</div>
 
-                    <Card className="p-4 hover:shadow-lg transition-shadow cursor-pointer">
+<Link href="/crm/add-lead">
 
-                      <div className="flex justify-between gap-4">
+<Button className="gap-2">
 
-                        <div className="flex-1">
+<Plus className="w-5 h-5"/>
 
-                          <h3 className="font-semibold text-lg">
-                            {lead.name}
-                          </h3>
+Add Lead
 
-                          <p className="text-sm text-muted-foreground">
-                            {lead.company}
-                          </p>
+</Button>
 
-                          <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
+</Link>
 
-                            {lead.email && (
+</div>
 
-                              <div className="flex items-center gap-1">
-                                <Mail className="w-4 h-4" />
-                                {lead.email}
-                              </div>
+{/* SEARCH */}
 
-                            )}
+<div className="flex items-center gap-4 flex-wrap">
 
-                            {lead.phone && (
+<div className="relative flex-1 max-w-md">
 
-                              <div className="flex items-center gap-1">
-                                <Phone className="w-4 h-4" />
-                                {lead.phone}
-                              </div>
+<Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"/>
 
-                            )}
+<Input
+placeholder="Search leads..."
+value={searchQuery}
+onChange={(e)=>setSearchQuery(e.target.value)}
+className="pl-10"
+/>
 
-                          </div>
+</div>
 
-                        </div>
+<Tabs value={view} onValueChange={(v)=>setView(v as any)}>
 
-                        <div className="text-right">
+<TabsList>
 
-                          <p className="font-semibold">
-                            ₹{lead.dealValue?.toLocaleString() || 0}
-                          </p>
+<TabsTrigger value="list">
 
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(lead.createdAt).toLocaleDateString()}
-                          </p>
+<List className="w-4 h-4 mr-2"/>
 
-                          <Badge className={statusColors[lead.status]}>
-                            {lead.status}
-                          </Badge>
+List
 
-                        </div>
+</TabsTrigger>
 
-                      </div>
+<TabsTrigger value="kanban">
 
-                    </Card>
+<KanbanIcon className="w-4 h-4 mr-2"/>
 
-                  </Link>
+Board
 
-                ))
+</TabsTrigger>
 
-              )}
+</TabsList>
 
-            </div>
+</Tabs>
 
-          )}
+</div>
 
-          {/* KANBAN VIEW */}
+{/* LIST VIEW */}
 
-          {view === 'kanban' && (
+{view==="list" && (
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+<div className="space-y-3">
 
-              {statuses.map((status) => (
+{filteredLeads.length === 0 && (
 
-                <div key={status} className="space-y-3">
+<Card className="p-12 text-center">
 
-                  <div className="flex items-center justify-between px-2">
+<p className="text-muted-foreground">
 
-                    <h3 className="font-semibold text-sm">
-                      {status}
-                    </h3>
+No leads found
 
-                    <span className="text-xs bg-muted px-2 py-1 rounded">
-                      {leadsByStatus[status].length}
-                    </span>
+</p>
 
-                  </div>
+</Card>
 
-                  <div className="space-y-2">
+)}
 
-                    {leadsByStatus[status].map((lead) => (
+{filteredLeads.map(lead=>(
 
-                      <Link
-                        key={lead.id}
-                        href={`/crm/${lead.id}`}
-                      >
+<Link key={lead.id} href={`/crm/${lead.id}`}>
 
-                        <Card className="p-3 hover:shadow-md cursor-pointer">
+<Card className="p-4 hover:shadow-lg transition-shadow cursor-pointer">
 
-                          <h4 className="font-medium text-sm">
-                            {lead.name}
-                          </h4>
+<div className="flex justify-between gap-4">
 
-                          <p className="text-xs text-muted-foreground">
-                            {lead.company}
-                          </p>
+<div className="flex-1">
 
-                          <p className="text-sm font-semibold mt-2">
-                            ₹{lead.dealValue?.toLocaleString() || 0}
-                          </p>
+<h3 className="font-semibold text-lg">
 
-                        </Card>
+{lead.name}
 
-                      </Link>
+</h3>
 
-                    ))}
+<p className="text-sm text-muted-foreground">
 
-                  </div>
+{lead.company}
 
-                </div>
+</p>
 
-              ))}
+<div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
 
-            </div>
+{lead.email && (
 
-          )}
+<div className="flex items-center gap-1">
 
-        </div>
+<Mail className="w-4 h-4"/>
 
-      </div>
+{lead.email}
 
-    </div>
+</div>
 
-  )
+)}
+
+{lead.phone && (
+
+<div className="flex items-center gap-1">
+
+<Phone className="w-4 h-4"/>
+
+{lead.phone}
+
+</div>
+
+)}
+
+</div>
+
+</div>
+
+<div className="text-right">
+
+<p className="font-semibold">
+
+₹{lead.value?.toLocaleString() || 0}
+
+</p>
+
+<p className="text-xs text-muted-foreground">
+
+{new Date(lead.createdAt).toLocaleDateString()}
+
+</p>
+
+<Badge className={statusColors[lead.status]}>
+
+{lead.status}
+
+</Badge>
+
+</div>
+
+</div>
+
+</Card>
+
+</Link>
+
+))}
+
+</div>
+
+)}
+
+{/* KANBAN */}
+
+{view==="kanban" && (
+
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+
+{statuses.map(status=>(
+
+<div key={status} className="space-y-3">
+
+<div className="flex justify-between px-2">
+
+<h3 className="font-semibold text-sm">
+
+{status}
+
+</h3>
+
+<span className="text-xs bg-muted px-2 py-1 rounded">
+
+{leadsByStatus[status]?.length || 0}
+
+</span>
+
+</div>
+
+<div className="space-y-2">
+
+{leadsByStatus[status]?.map((lead:any)=>(
+
+<Link key={lead.id} href={`/crm/${lead.id}`}>
+
+<Card className="p-3 hover:shadow-md cursor-pointer">
+
+<h4 className="font-medium text-sm">
+
+{lead.name}
+
+</h4>
+
+<p className="text-xs text-muted-foreground">
+
+{lead.company}
+
+</p>
+
+<p className="text-sm font-semibold mt-2">
+
+₹{lead.value?.toLocaleString() || 0}
+
+</p>
+
+</Card>
+
+</Link>
+
+))}
+
+</div>
+
+</div>
+
+))}
+
+</div>
+
+)}
+
+</div>
+
+</div>
+
+</div>
+
+)
 
 }

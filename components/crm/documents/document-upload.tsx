@@ -9,6 +9,8 @@ import { Upload } from "lucide-react"
 
 import { CRMDocument } from "./document-utils"
 
+import { uploadDocument } from "@/lib/services/document.service"
+
 interface Props {
 
   leadId: string
@@ -26,28 +28,37 @@ export default function DocumentUpload({
   const [file, setFile] =
     useState<File | null>(null)
 
-  const [type, setType] =
-    useState<CRMDocument["type"]>("proposal")
+  const [loading, setLoading] =
+    useState(false)
 
-  function handleUpload() {
+  async function handleUpload() {
 
     if (!file) return
 
-    const doc: CRMDocument = {
+    try {
 
-      id: Date.now().toString(),
-      leadId,
-      name: file.name,
-      size: file.size,
-      type,
-      url: URL.createObjectURL(file),
-      createdAt: new Date()
+      setLoading(true)
+
+      const formData = new FormData()
+
+      formData.append("file", file)
+      formData.append("leadId", leadId)
+
+      const res = await uploadDocument(formData)
+
+      onUpload(res.data)
+
+      setFile(null)
+
+    } catch (error) {
+
+      console.error("Upload failed", error)
+
+    } finally {
+
+      setLoading(false)
 
     }
-
-    onUpload(doc)
-
-    setFile(null)
 
   }
 
@@ -64,12 +75,13 @@ export default function DocumentUpload({
 
       <Button
         onClick={handleUpload}
+        disabled={!file || loading}
         className="gap-2"
       >
 
         <Upload className="w-4 h-4" />
 
-        Upload
+        {loading ? "Uploading..." : "Upload"}
 
       </Button>
 

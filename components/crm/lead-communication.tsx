@@ -1,18 +1,81 @@
 'use client'
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 
-export default function LeadCommunication(){
+import {
+createActivity,
+getLeadActivities,
+Activity
+} from "@/lib/services/activity.service"
 
-const [messages,setMessages] = useState<string[]>([])
+interface Props{
+
+leadId:string
+
+}
+
+export default function LeadCommunication({leadId}:Props){
+
+const [messages,setMessages] =
+useState<Activity[]>([])
+
 const [text,setText] = useState("")
 
-function send(){
+const [loading,setLoading] =
+useState(true)
 
-setMessages([...messages,text])
+useEffect(()=>{
+
+loadMessages()
+
+},[leadId])
+
+async function loadMessages(){
+
+try{
+
+const res = await getLeadActivities(leadId)
+
+setMessages(res.data || [])
+
+}catch(err){
+
+console.error("Load messages failed",err)
+
+}finally{
+
+setLoading(false)
+
+}
+
+}
+
+async function send(){
+
+if(!text.trim()) return
+
+try{
+
+const res = await createActivity({
+
+type:"MESSAGE_SENT",
+description:text,
+leadId
+
+})
+
+setMessages(prev=>[res.data,...prev])
+
 setText("")
+
+}catch(err){
+
+console.error("Send message failed",err)
+
+}
 
 }
 
@@ -34,18 +97,27 @@ placeholder="Send message"
 Send
 </Button>
 
+{loading ? (
+
+<p className="text-sm text-muted-foreground">
+Loading messages...
+</p>
+
+) : (
+
 <div className="space-y-1">
 
-{messages.map((m,i)=>(
-<p key={i}>
-{m}
+{messages.map((m)=>(
+<p key={m.id}>
+{m.description}
 </p>
 ))}
 
 </div>
 
+)}
+
 </div>
 
 )
-
 }

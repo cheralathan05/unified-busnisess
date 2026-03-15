@@ -1,23 +1,76 @@
+/*
+=====================================
+CRM Document Interface
+Matches Backend Document Model
+=====================================
+*/
+
 export interface CRMDocument {
 
   id: string
-  leadId: string
+
+  leadId?: string
+
   name: string
+
+  type: string        // MIME type from backend
+
   size: number
-  type: "proposal" | "contract" | "invoice" | "other"
+
   url: string
-  createdAt: Date
+
+  createdAt?: string
 
 }
 
+/*
+=====================================
+Format File Size Utility
+=====================================
+*/
+
 export function formatFileSize(bytes: number) {
 
-  if (bytes === 0) return "0 KB"
+  if (!bytes) return "0 KB"
 
   const kb = bytes / 1024
 
-  if (kb < 1024) return kb.toFixed(1) + " KB"
+  if (kb < 1024)
+    return kb.toFixed(1) + " KB"
 
-  return (kb / 1024).toFixed(1) + " MB"
+  const mb = kb / 1024
+
+  if (mb < 1024)
+    return mb.toFixed(1) + " MB"
+
+  const gb = mb / 1024
+
+  return gb.toFixed(1) + " GB"
+
+}
+
+/*
+=====================================
+Get File Type Label
+=====================================
+*/
+
+export function getFileType(type: string) {
+
+  if (!type) return "File"
+
+  if (type.includes("pdf"))
+    return "PDF"
+
+  if (type.includes("image"))
+    return "Image"
+
+  if (type.includes("word"))
+    return "Document"
+
+  if (type.includes("excel"))
+    return "Spreadsheet"
+
+  return "File"
 
 }

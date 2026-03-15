@@ -11,19 +11,37 @@ import {
   FileText
 } from "lucide-react"
 
+import { deleteDocument } from "@/lib/services/document.service"
+
 interface Props {
 
   document: CRMDocument
-  onDelete: (id: string) => void
+  onDeleted?: (id: string) => void
 
 }
 
 export default function DocumentItem({
 
   document,
-  onDelete
+  onDeleted
 
 }: Props) {
+
+  async function handleDelete() {
+
+    try {
+
+      await deleteDocument(document.id)
+
+      onDeleted?.(document.id)
+
+    } catch (error) {
+
+      console.error("Delete document failed:", error)
+
+    }
+
+  }
 
   return (
 
@@ -51,9 +69,12 @@ export default function DocumentItem({
 
       <div className="flex gap-2">
 
+        {/* Download */}
+
         <a
           href={document.url}
-          download
+          target="_blank"
+          rel="noopener noreferrer"
         >
 
           <Button
@@ -67,10 +88,12 @@ export default function DocumentItem({
 
         </a>
 
+        {/* Delete */}
+
         <Button
           size="icon"
           variant="destructive"
-          onClick={() => onDelete(document.id)}
+          onClick={handleDelete}
         >
 
           <Trash2 className="w-4 h-4" />

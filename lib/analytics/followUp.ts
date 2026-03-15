@@ -1,4 +1,10 @@
-import { Lead } from "@/hooks/use-app-state"
+import { Lead } from "@/lib/services/lead.service"
+
+/*
+=====================================
+Leads Needing Follow-Up
+=====================================
+*/
 
 export function getLeadsNeedingFollowUp(leads: Lead[]) {
 
@@ -12,7 +18,7 @@ export function getLeadsNeedingFollowUp(leads: Lead[]) {
       (now.getTime() - created.getTime()) /
       (1000 * 60 * 60 * 24)
 
-    return diff >= 3 && lead.status !== "Won"
+    return diff >= 3 && lead.status !== "WON"
 
   })
 

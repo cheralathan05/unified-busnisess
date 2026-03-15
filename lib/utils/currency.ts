@@ -1,3 +1,9 @@
+/*
+=====================================
+Format Currency (INR)
+=====================================
+*/
+
 export function formatCurrency(amount: number) {
 
   return new Intl.NumberFormat("en-IN", {

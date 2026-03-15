@@ -1,231 +1,288 @@
 'use client'
 
 import { useParams, useRouter } from "next/navigation"
-import { useAppState } from "@/hooks/use-app-state"
+import { useEffect, useState } from "react"
 
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Progress } from "@/components/ui/progress"
 
 import {
-  ArrowLeft,
-  Mail,
-  Phone,
-  Building,
-  DollarSign,
-  Calendar
+ArrowLeft,
+Mail,
+Phone,
+Building,
+DollarSign,
+Calendar,
+PhoneCall,
+MailCheck
 } from "lucide-react"
 
+import { getLeadById, deleteLead } from "@/lib/services/lead.service"
 
-const statusColors: Record<string,string> = {
-  New:"bg-blue-500/10 text-blue-400 border border-blue-500/30",
-  Contacted:"bg-purple-500/10 text-purple-400 border border-purple-500/30",
-  Proposal:"bg-yellow-500/10 text-yellow-400 border border-yellow-500/30",
-  Negotiation:"bg-orange-500/10 text-orange-400 border border-orange-500/30",
-  Won:"bg-green-500/10 text-green-400 border border-green-500/30",
-  Lost:"bg-red-500/10 text-red-400 border border-red-500/30"
+
+const statusColors:Record<string,string>={
+
+NEW:"bg-blue-500/10 text-blue-400 border border-blue-500/30",
+CONTACTED:"bg-purple-500/10 text-purple-400 border border-purple-500/30",
+QUALIFIED:"bg-yellow-500/10 text-yellow-400 border border-yellow-500/30",
+PROPOSAL:"bg-orange-500/10 text-orange-400 border border-orange-500/30",
+WON:"bg-green-500/10 text-green-400 border border-green-500/30",
+LOST:"bg-red-500/10 text-red-400 border border-red-500/30"
+
 }
 
 
 export default function LeadProfilePage(){
 
-  const params = useParams()
-  const router = useRouter()
+const params = useParams()
+const router = useRouter()
 
-  const { leads, deleteLead } = useAppState()
+const leadId = params?.leadId as string
 
-  const leadId = params?.leadId as string
+const [lead,setLead] = useState<any>(null)
+const [loading,setLoading] = useState(true)
 
-  const lead = leads.find(l => l.id === leadId)
 
+/* LOAD SINGLE LEAD */
 
-  if(!lead){
+useEffect(()=>{
 
-    return (
+async function loadLead(){
 
-      <div className="p-8 text-center">
+try{
 
-        <h2 className="text-xl font-semibold">
-          Lead not found
-        </h2>
+const res = await getLeadById(leadId)
 
-        <p className="text-muted-foreground mt-2">
-          The lead you are looking for does not exist.
-        </p>
+setLead(res.data)
 
-        <Button
-          className="mt-4"
-          onClick={()=>router.push("/crm")}
-        >
-          Back to CRM
-        </Button>
+}catch(err){
 
-      </div>
+console.error("Failed to load lead",err)
 
-    )
+}
 
-  }
+setLoading(false)
 
+}
 
-  function handleDelete(){
+loadLead()
 
-    const confirmDelete = confirm("Delete this lead?")
+},[leadId])
 
-    if(!confirmDelete) return
 
-    deleteLead(lead.id)
+/* LOADING */
 
-    router.push("/crm")
+if(loading){
 
-  }
+return(
 
+<div className="p-10 text-center">
+Loading lead...
+</div>
 
-  return (
+)
 
-    <div className="w-full h-full flex flex-col">
+}
 
-      <div className="flex-1 overflow-y-auto">
 
-        <div className="p-6 md:p-8 max-w-6xl mx-auto space-y-6">
+/* NOT FOUND */
 
-          {/* Back Button */}
+if(!lead){
 
-          <Button
-            variant="outline"
-            onClick={()=>router.push("/crm")}
-          >
+return(
 
-            <ArrowLeft className="w-4 h-4 mr-2"/>
+<div className="p-8 text-center">
 
-            Back to CRM
+<h2 className="text-xl font-semibold">
+Lead not found
+</h2>
 
-          </Button>
+<Button
+className="mt-4"
+onClick={()=>router.push("/crm")}
+>
 
+Back to CRM
 
-          {/* Header */}
+</Button>
 
-          <div className="flex items-center justify-between">
+</div>
 
-            <div>
+)
 
-              <h1 className="text-3xl font-bold">
-                {lead.name}
-              </h1>
+}
 
-              <p className="text-muted-foreground">
-                {lead.company}
-              </p>
 
-            </div>
+/* DELETE */
 
-            <Badge className={statusColors[lead.status]}>
-              {lead.status}
-            </Badge>
+async function handleDelete(){
 
-          </div>
+const confirmDelete = confirm("Delete this lead?")
 
+if(!confirmDelete) return
 
-          {/* Lead Info */}
+await deleteLead(lead.id)
 
-          <Card className="p-6 space-y-4">
+router.push("/crm")
 
-            <h2 className="text-lg font-semibold">
-              Lead Information
-            </h2>
+}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-              <div className="flex items-center gap-2 text-sm">
+const probability = lead.probability ?? 40
 
-                <Mail className="w-4 h-4 text-muted-foreground"/>
 
-                {lead.email}
+return(
 
-              </div>
+<div className="w-full h-full flex flex-col">
 
+<div className="flex-1 overflow-y-auto">
 
-              <div className="flex items-center gap-2 text-sm">
+<div className="p-6 md:p-8 max-w-6xl mx-auto space-y-6">
 
-                <Phone className="w-4 h-4 text-muted-foreground"/>
+{/* BACK */}
 
-                {lead.phone}
+<Button
+variant="outline"
+onClick={()=>router.push("/crm")}
+>
 
-              </div>
+<ArrowLeft className="w-4 h-4 mr-2"/>
+Back to CRM
 
+</Button>
 
-              <div className="flex items-center gap-2 text-sm">
 
-                <Building className="w-4 h-4 text-muted-foreground"/>
+{/* HEADER */}
 
-                {lead.company}
+<div className="flex items-center justify-between">
 
-              </div>
+<div>
 
+<h1 className="text-3xl font-bold">
+{lead.name}
+</h1>
 
-              <div className="flex items-center gap-2 text-sm font-semibold">
+<p className="text-muted-foreground">
+{lead.company}
+</p>
 
-                <DollarSign className="w-4 h-4"/>
+</div>
 
-                ₹{lead.dealValue.toLocaleString()}
+<Badge className={statusColors[lead.status]}>
+{lead.status}
+</Badge>
 
-              </div>
+</div>
 
 
-              <div className="flex items-center gap-2 text-sm">
+{/* DEAL PROGRESS */}
 
-                <Calendar className="w-4 h-4 text-muted-foreground"/>
+<Card className="p-6">
 
-                Created: {new Date(lead.createdAt).toLocaleDateString()}
+<h2 className="text-lg font-semibold mb-4">
+Deal Progress
+</h2>
 
-              </div>
+<Progress value={probability} className="h-2"/>
 
-            </div>
+<p className="text-sm text-muted-foreground mt-2">
+Probability to close: {probability}%
+</p>
 
-          </Card>
+</Card>
 
 
-          {/* Notes */}
+{/* INFO */}
 
-          <Card className="p-6">
+<Card className="p-6 space-y-4">
 
-            <h2 className="text-lg font-semibold mb-2">
-              Notes
-            </h2>
+<h2 className="text-lg font-semibold">
+Lead Information
+</h2>
 
-            <p className="text-sm text-muted-foreground">
+<div className="grid md:grid-cols-2 gap-4">
 
-              {lead.notes || "No notes available"}
+{lead.email && (
 
-            </p>
+<div className="flex items-center gap-2 text-sm">
 
-          </Card>
+<Mail className="w-4 h-4 text-muted-foreground"/>
+{lead.email}
 
+</div>
 
-          {/* Actions */}
+)}
 
-          <div className="flex gap-3">
+{lead.phone && (
 
-            <Button
-              onClick={()=>router.push(`/crm/${lead.id}/edit`)}
-            >
-              Edit Lead
-            </Button>
+<div className="flex items-center gap-2 text-sm">
 
-            <Button
-              variant="destructive"
-              onClick={handleDelete}
-            >
-              Delete Lead
-            </Button>
+<Phone className="w-4 h-4 text-muted-foreground"/>
+{lead.phone}
 
-          </div>
+</div>
 
-        </div>
+)}
 
-      </div>
+<div className="flex items-center gap-2 text-sm">
 
-    </div>
+<Building className="w-4 h-4 text-muted-foreground"/>
+{lead.company}
 
-  )
+</div>
+
+<div className="flex items-center gap-2 text-sm font-semibold">
+
+<DollarSign className="w-4 h-4"/>
+₹{lead.value?.toLocaleString() || 0}
+
+</div>
+
+<div className="flex items-center gap-2 text-sm">
+
+<Calendar className="w-4 h-4 text-muted-foreground"/>
+
+Created:
+{new Date(lead.createdAt).toLocaleDateString()}
+
+</div>
+
+</div>
+
+</Card>
+
+
+{/* ACTIONS */}
+
+<div className="flex gap-3">
+
+<Button
+onClick={()=>router.push(`/crm/${lead.id}/edit`)}
+>
+
+Edit Lead
+
+</Button>
+
+<Button
+variant="destructive"
+onClick={handleDelete}
+>
+
+Delete Lead
+
+</Button>
+
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+)
 
 }

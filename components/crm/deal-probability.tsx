@@ -3,27 +3,29 @@
 import { Progress } from "@/components/ui/progress"
 
 interface Props{
+
 stage:string
+
 }
 
 function getProbability(stage:string){
 
 switch(stage){
 
-case "New":
+case "NEW":
 return 10
 
-case "Contacted":
+case "CONTACTED":
 return 30
 
-case "Proposal":
-return 60
+case "QUALIFIED":
+return 70
 
-case "Negotiation":
-return 80
-
-case "Won":
+case "WON":
 return 100
+
+case "LOST":
+return 0
 
 default:
 return 0

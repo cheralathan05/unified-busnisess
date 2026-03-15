@@ -1,75 +1,76 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* In Tailwind v4, variables MUST be inside @theme to generate utility classes.
+  We use --color-* to tell Tailwind these are theme colors.
+*/
+@theme {
+  --color-background: rgb(var(--background));
+  --color-foreground: rgb(var(--foreground));
+
+  --color-card: rgb(var(--card));
+  --color-card-foreground: rgb(var(--card-foreground));
+
+  --color-primary: rgb(var(--primary));
+  --color-primary-foreground: rgb(var(--primary-foreground));
+
+  --color-secondary: rgb(var(--secondary));
+  --color-secondary-foreground: rgb(var(--secondary-foreground));
+
+  --color-muted: rgb(var(--muted));
+  --color-muted-foreground: rgb(var(--muted-foreground));
+
+  --color-accent: rgb(var(--accent));
+  --color-accent-foreground: rgb(var(--accent-foreground));
+
+  --color-border: rgb(var(--border));
+  --color-input: rgb(var(--input));
+  --color-ring: rgb(var(--ring));
+
+  --radius-custom: 0.75rem;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
+
+  /* Custom Animations */
+  @keyframes slide-down {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+}
 
 /* ===============================
-   ROOT THEME VARIABLES
+   ROOT DATA (Kept for dynamic switching)
 ================================ */
-
 :root {
   --background: 9 9 11;
   --foreground: 255 255 255;
-
   --card: 20 20 24;
   --card-foreground: 255 255 255;
-
   --primary: 168 85 247;
   --primary-foreground: 9 9 11;
-
   --secondary: 124 58 242;
   --secondary-foreground: 255 255 255;
-
   --muted: 63 63 70;
   --muted-foreground: 161 161 170;
-
   --accent: 139 92 246;
   --accent-foreground: 255 255 255;
-
-  --border: 39 39 42;
-  --input: 24 24 27;
-  --ring: 168 85 247;
-
-  --radius: 0.75rem;
-
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
-    sans-serif;
-}
-
-.dark {
-  --background: 9 9 11;
-  --foreground: 255 255 255;
-
-  --card: 20 20 24;
-  --card-foreground: 255 255 255;
-
-  --primary: 168 85 247;
-  --primary-foreground: 9 9 11;
-
-  --secondary: 124 58 242;
-  --secondary-foreground: 255 255 255;
-
-  --muted: 63 63 70;
-  --muted-foreground: 161 161 170;
-
-  --accent: 139 92 246;
-  --accent-foreground: 255 255 255;
-
   --border: 39 39 42;
   --input: 24 24 27;
   --ring: 168 85 247;
 }
 
 /* ===============================
-   TAILWIND BASE FIX
+   BASE STYLES
 ================================ */
-
 @layer base {
   * {
-  box-sizing: border-box;
-}
+    box-sizing: border-box;
+  }
 
-  html,
-  body {
+  html, body {
     height: 100%;
   }
 
@@ -84,89 +85,27 @@
 }
 
 /* ===============================
-   TYPOGRAPHY
+   TYPOGRAPHY & SCROLLBAR
 ================================ */
-
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
+h1, h2, h3, h4, h5, h6 {
   font-weight: 600;
   letter-spacing: -0.02em;
 }
 
-h1 {
-  font-size: 2.5rem;
-  line-height: 1.2;
-}
+h1 { font-size: 2.5rem; line-height: 1.2; }
+h2 { font-size: 1.875rem; line-height: 1.3; }
+h3 { font-size: 1.5rem; line-height: 1.4; }
+p { line-height: 1.6; }
 
-h2 {
-  font-size: 1.875rem;
-  line-height: 1.3;
-}
-
-h3 {
-  font-size: 1.5rem;
-  line-height: 1.4;
-}
-
-p {
-  line-height: 1.6;
-}
-
-/* ===============================
-   SCROLLBAR
-================================ */
-
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: rgb(var(--muted));
   border-radius: 8px;
 }
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--muted-foreground));
-}
-
-/* ===============================
-   FOCUS
-================================ */
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--muted-foreground)); }
 
 :focus-visible {
   outline: 2px solid rgb(var(--primary));
   outline-offset: 2px;
-}
-
-/* ===============================
-   ANIMATIONS
-================================ */
-
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
 }

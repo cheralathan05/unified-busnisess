@@ -1,267 +1,368 @@
 'use client'
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import Link from "next/link"
 
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
-import { useAppState } from "@/hooks/use-app-state"
-
+import ActivityFeed from "@/components/crm/activity-feed"
+import PipelineAnalytics from "@/components/crm/pipeline-analytics"
 import LeadCard from "@/components/crm/lead-card"
 import LeadSearch from "@/components/crm/lead-search"
 import LeadFilters from "@/components/crm/lead-filters"
 import LeadPagination from "@/components/crm/lead-pagination"
 import BulkActions from "@/components/crm/bulk-actions"
+import LeadPreviewPanel from "@/components/crm/lead-preview-panel"
+
+import SalesIntelligence from "@/components/crm/sales-intelligence"
+import LeadAutomation from "@/components/crm/lead-automation"
+import RelationshipGraph from "@/components/crm/relationship-graph"
+import CommandPalette from "@/components/ui/command-palette"
+
+import { getLeads, deleteLead } from "@/lib/services/lead.service"
 
 import {
-  Plus,
-  List,
-  Kanban as KanbanIcon
+Plus,
+List,
+Kanban as KanbanIcon
 } from "lucide-react"
 
-export default function CRMPage() {
+export default function CRMPage(){
 
-  const { leads } = useAppState()
+/* ---------------- BACKEND DATA ---------------- */
 
-  const [view, setView] = useState<'list' | 'kanban'>('list')
-  const [searchQuery, setSearchQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState("all")
-  const [selectedLeads, setSelectedLeads] = useState<string[]>([])
-  const [page, setPage] = useState(1)
+const [leads,setLeads] = useState<any[]>([])
+const [loading,setLoading] = useState(true)
 
-  const pageSize = 10
+/* ---------------- UI STATE ---------------- */
 
-  /* FILTERED LEADS */
+const [view,setView] = useState<'list' | 'kanban'>('list')
+const [searchQuery,setSearchQuery] = useState("")
+const [statusFilter,setStatusFilter] = useState("all")
 
-  const filteredLeads = useMemo(() => {
+const [selectedLeads,setSelectedLeads] = useState<string[]>([])
+const [selectedLead,setSelectedLead] = useState<any | null>(null)
 
-    return leads
-      .filter((lead) =>
-        lead.name
-          .toLowerCase()
-          .includes(searchQuery.toLowerCase())
-      )
-      .filter((lead) =>
-        statusFilter === "all"
-          ? true
-          : lead.status === statusFilter
-      )
+const [page,setPage] = useState(1)
 
-  }, [leads, searchQuery, statusFilter])
+const pageSize = 10
 
-  /* PAGINATION */
+/* ---------------- LOAD LEADS ---------------- */
 
-  const totalPages =
-    Math.ceil(filteredLeads.length / pageSize)
+async function loadLeads(){
 
-  const paginatedLeads = filteredLeads.slice(
-    (page - 1) * pageSize,
-    page * pageSize
-  )
+try{
 
-  return (
+const res = await getLeads()
 
-    <div className="w-full h-full flex flex-col">
+setLeads(res.data || [])
 
-      <div className="flex-1 overflow-y-auto">
+}catch(err){
 
-        <div className="max-w-7xl mx-auto p-6 md:p-8 space-y-6">
+console.error("Failed to fetch leads",err)
 
-          {/* HEADER */}
+}
 
-          <div className="flex items-center justify-between">
+setLoading(false)
 
-            <div>
+}
 
-              <h1 className="text-3xl font-bold">
+useEffect(()=>{
 
-                CRM & Leads
+loadLeads()
 
-              </h1>
+},[])
 
-              <p className="text-muted-foreground mt-1">
+/* ---------------- FILTER ---------------- */
 
-                Manage your sales pipeline and customer relationships
+const filteredLeads = useMemo(()=>{
 
-              </p>
+return leads
+.filter((lead)=>
+lead.name?.toLowerCase()
+.includes(searchQuery.toLowerCase())
+)
+.filter((lead)=>
+statusFilter === "all"
+? true
+: lead.status === statusFilter
+)
 
-            </div>
+},[leads,searchQuery,statusFilter])
 
-            <Link href="/crm/add-lead">
+/* ---------------- PAGINATION ---------------- */
 
-              <Button className="gap-2">
+const totalPages = Math.ceil(filteredLeads.length / pageSize)
 
-                <Plus className="w-4 h-4" />
+const paginatedLeads = filteredLeads.slice(
+(page-1)*pageSize,
+page*pageSize
+)
 
-                Add Lead
+/* ---------------- SELECT ---------------- */
 
-              </Button>
+function toggleLead(id:string){
 
-            </Link>
+setSelectedLeads(prev =>
+prev.includes(id)
+? prev.filter(l=>l!==id)
+: [...prev,id]
+)
 
-          </div>
+}
 
-          {/* SEARCH + FILTER */}
+/* ---------------- BULK DELETE ---------------- */
 
-          <div className="flex flex-col md:flex-row gap-4 md:items-center">
+async function handleDelete(ids:string[]){
 
-            <LeadSearch
-              value={searchQuery}
-              setValue={(value) => {
-                setSearchQuery(value)
-                setPage(1)
-              }}
-            />
+try{
 
-            <LeadFilters
-              setStatus={(value) => {
-                setStatusFilter(value)
-                setPage(1)
-              }}
-            />
+await Promise.all(
+ids.map(id => deleteLead(id))
+)
 
-          </div>
+setSelectedLeads([])
 
-          {/* VIEW SWITCH */}
+loadLeads()
 
-          <Tabs
-            value={view}
-            onValueChange={(v) => setView(v as any)}
-          >
+}catch(err){
 
-            <TabsList>
+console.error("Delete failed",err)
 
-              <TabsTrigger value="list">
+}
 
-                <List className="w-4 h-4 mr-2" />
+}
 
-                List
+/* ---------------- LOADING ---------------- */
 
-              </TabsTrigger>
+if(loading){
 
-              <TabsTrigger value="kanban">
+return(
 
-                <KanbanIcon className="w-4 h-4 mr-2" />
+<div className="p-10 text-center">
+Loading CRM...
+</div>
 
-                Board
+)
 
-              </TabsTrigger>
+}
 
-            </TabsList>
+/* ---------------- PAGE ---------------- */
 
-          </Tabs>
+return(
 
-          {/* BULK ACTIONS */}
+<div className="w-full h-full flex">
 
-          {selectedLeads.length > 0 && (
+<div className="flex-1 overflow-y-auto">
 
-            <BulkActions
-              selectedIds={selectedLeads}
-              onDelete={() => {}}
-            />
+<div className="max-w-7xl mx-auto p-6 md:p-8 space-y-6">
 
-          )}
+{/* HEADER */}
 
-          {/* EMPTY STATE */}
+<div className="flex items-center justify-between">
 
-          {filteredLeads.length === 0 && (
+<div>
 
-            <div className="border rounded-lg p-10 text-center">
+<h1 className="text-3xl font-bold">
+CRM & Leads
+</h1>
 
-              <p className="text-muted-foreground">
+<p className="text-muted-foreground mt-1">
+Manage your sales pipeline
+</p>
 
-                No leads found.
+</div>
 
-              </p>
+<Link href="/crm/add-lead">
 
-            </div>
+<Button className="gap-2">
 
-          )}
+<Plus className="w-4 h-4"/>
 
-          {/* LIST VIEW */}
+Add Lead
 
-          {view === "list" && filteredLeads.length > 0 && (
+</Button>
 
-            <div className="space-y-3">
+</Link>
 
-              {paginatedLeads.map((lead) => (
+</div>
 
-                <LeadCard
-                  key={lead.id}
-                  lead={lead}
-                />
+{/* DASHBOARD BLOCKS */}
 
-              ))}
+<SalesIntelligence />
+<LeadAutomation />
+<RelationshipGraph />
+<ActivityFeed />
 
-            </div>
+{/* SEARCH + FILTER */}
 
-          )}
+<div className="flex flex-col md:flex-row gap-4 md:items-center">
 
-          {/* KANBAN VIEW */}
+<LeadSearch
+value={searchQuery}
+setValue={(v)=>{
+setSearchQuery(v)
+setPage(1)
+}}
+/>
 
-          {view === "kanban" && (
+<LeadFilters
+setStatus={(v)=>{
+setStatusFilter(v)
+setPage(1)
+}}
+/>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+</div>
 
-              {["New","Contacted","Proposal","Negotiation","Won","Lost"]
-                .map((status) => {
+{/* VIEW SWITCH */}
 
-                const columnLeads =
-                  filteredLeads.filter(
-                    l => l.status === status
-                  )
+<Tabs value={view} onValueChange={(v)=>setView(v as any)}>
 
-                return (
+<TabsList>
 
-                  <div
-                    key={status}
-                    className="space-y-3"
-                  >
+<TabsTrigger value="list">
 
-                    <h3 className="font-semibold text-sm">
+<List className="w-4 h-4 mr-2"/>
+List
 
-                      {status} ({columnLeads.length})
+</TabsTrigger>
 
-                    </h3>
+<TabsTrigger value="kanban">
 
-                    {columnLeads.map((lead) => (
+<KanbanIcon className="w-4 h-4 mr-2"/>
+Board
 
-                      <LeadCard
-                        key={lead.id}
-                        lead={lead}
-                      />
+</TabsTrigger>
 
-                    ))}
+</TabsList>
 
-                  </div>
+</Tabs>
 
-                )
+{/* BULK ACTIONS */}
 
-              })}
+{selectedLeads.length > 0 && (
 
-            </div>
+<BulkActions
+selectedIds={selectedLeads}
+onDelete={handleDelete}
+/>
 
-          )}
+)}
 
-          {/* PAGINATION */}
+{/* EMPTY */}
 
-          {view === "list" && totalPages > 1 && (
+{filteredLeads.length === 0 && (
 
-            <LeadPagination
-              page={page}
-              totalPages={totalPages}
-              setPage={setPage}
-            />
+<div className="border rounded-lg p-10 text-center">
 
-          )}
+<p className="text-muted-foreground">
+No leads found
+</p>
 
-        </div>
+</div>
 
-      </div>
+)}
 
-    </div>
+{/* LIST */}
 
-  )
+{view==="list" && (
+
+<div className="space-y-3">
+
+{paginatedLeads.map((lead)=>(
+<LeadCard
+key={lead.id}
+lead={lead}
+selected={selectedLeads.includes(lead.id)}
+onSelect={()=>toggleLead(lead.id)}
+onClick={()=>setSelectedLead(lead)}
+/>
+))}
+
+</div>
+
+)}
+
+{/* KANBAN */}
+
+{view==="kanban" && (
+
+<div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+
+{["NEW","CONTACTED","QUALIFIED","WON","LOST"]
+.map(status=>{
+
+const columnLeads =
+filteredLeads.filter(l => l.status===status)
+
+return(
+
+<div key={status}>
+
+<h3 className="font-semibold mb-2">
+
+{status} ({columnLeads.length})
+
+</h3>
+
+<div className="space-y-2">
+
+{columnLeads.map(lead=>(
+<LeadCard
+key={lead.id}
+lead={lead}
+onClick={()=>setSelectedLead(lead)}
+/>
+))}
+
+</div>
+
+</div>
+
+)
+
+})}
+
+</div>
+
+)}
+
+{/* ANALYTICS */}
+
+<PipelineAnalytics />
+
+{/* PAGINATION */}
+
+{view==="list" && totalPages>1 && (
+
+<LeadPagination
+page={page}
+setPage={setPage}
+/>
+
+)}
+
+</div>
+
+</div>
+
+{/* PREVIEW */}
+
+{selectedLead && (
+
+<LeadPreviewPanel
+lead={selectedLead}
+onClose={()=>setSelectedLead(null)}
+/>
+
+)}
+
+<CommandPalette/>
+
+</div>
+
+)
 
 }

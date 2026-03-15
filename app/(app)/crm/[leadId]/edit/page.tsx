@@ -1,9 +1,7 @@
 'use client'
 
 import { useParams, useRouter } from "next/navigation"
-import { useAppState } from "@/hooks/use-app-state"
-
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -13,17 +11,91 @@ import { Textarea } from "@/components/ui/textarea"
 
 import { ArrowLeft } from "lucide-react"
 
+import { getLeadById, updateLead } from "@/lib/services/lead.service"
+
 
 export default function EditLeadPage(){
 
 const params = useParams()
 const router = useRouter()
 
-const { leads, updateLead } = useAppState()
-
 const leadId = params?.leadId as string
 
-const lead = leads.find(l => l.id === leadId)
+const [lead,setLead] = useState<any>(null)
+const [loading,setLoading] = useState(true)
+
+const [form,setForm] = useState<any>({
+name:"",
+email:"",
+phone:"",
+company:"",
+value:0,
+notes:"",
+tags:"",
+probability:0,
+calls:0,
+emails:0,
+nextFollowUp:""
+})
+
+
+/* LOAD SINGLE LEAD */
+
+useEffect(()=>{
+
+async function loadLead(){
+
+try{
+
+const res = await getLeadById(leadId)
+
+const found = res.data
+
+setLead(found)
+
+setForm({
+name:found.name || "",
+email:found.email || "",
+phone:found.phone || "",
+company:found.company || "",
+value:found.value || 0,
+notes:found.notes || "",
+tags:found.tags?.join(", ") || "",
+probability:found.probability || 0,
+calls:found.calls || 0,
+emails:found.emails || 0,
+nextFollowUp:found.nextFollowUp || ""
+})
+
+}catch(err){
+
+console.error("Failed to load lead",err)
+
+}
+
+setLoading(false)
+
+}
+
+loadLead()
+
+},[leadId])
+
+
+/* LOADING */
+
+if(loading){
+
+return(
+<div className="p-10 text-center">
+Loading lead...
+</div>
+)
+
+}
+
+
+/* NOT FOUND */
 
 if(!lead){
 
@@ -39,7 +111,9 @@ Lead not found
 className="mt-4"
 onClick={()=>router.push("/crm")}
 >
+
 Back to CRM
+
 </Button>
 
 </div>
@@ -48,41 +122,43 @@ Back to CRM
 
 }
 
-const [form,setForm]=useState({
 
-name:lead.name,
-email:lead.email,
-phone:lead.phone,
-company:lead.company,
-dealValue:lead.dealValue,
-notes:lead.notes
-
-})
-
+/* CHANGE HANDLER */
 
 function handleChange(
 e:React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement>
 ){
 
-const {name,value}=e.target
+const {name,value} = e.target
 
 setForm(prev=>({
-
 ...prev,
 [name]:value
-
 }))
 
 }
 
 
-function handleSubmit(e:React.FormEvent){
+/* SUBMIT */
+
+async function handleSubmit(e:React.FormEvent){
 
 e.preventDefault()
 
-updateLead(lead.id,{
+await updateLead(lead.id,{
+
 ...form,
-dealValue:Number(form.dealValue)
+
+value:Number(form.value),
+probability:Number(form.probability),
+calls:Number(form.calls),
+emails:Number(form.emails),
+
+tags:form.tags
+.split(",")
+.map((tag:string)=>tag.trim())
+.filter(Boolean)
+
 })
 
 router.push(`/crm/${lead.id}`)
@@ -98,7 +174,6 @@ return(
 
 <div className="p-6 md:p-8 max-w-3xl mx-auto space-y-6">
 
-{/* Back */}
 
 <Button
 variant="outline"
@@ -106,13 +181,10 @@ onClick={()=>router.push(`/crm/${lead.id}`)}
 >
 
 <ArrowLeft className="w-4 h-4 mr-2"/>
-
 Back
 
 </Button>
 
-
-{/* Card */}
 
 <Card className="p-6 space-y-6">
 
@@ -184,9 +256,77 @@ onChange={handleChange}
 <Label>Deal Value</Label>
 
 <Input
-name="dealValue"
+name="value"
 type="number"
-value={form.dealValue}
+value={form.value}
+onChange={handleChange}
+/>
+
+</div>
+
+
+<div>
+
+<Label>Deal Probability (%)</Label>
+
+<Input
+name="probability"
+type="number"
+value={form.probability}
+onChange={handleChange}
+/>
+
+</div>
+
+
+<div>
+
+<Label>Calls</Label>
+
+<Input
+name="calls"
+type="number"
+value={form.calls}
+onChange={handleChange}
+/>
+
+</div>
+
+
+<div>
+
+<Label>Emails</Label>
+
+<Input
+name="emails"
+type="number"
+value={form.emails}
+onChange={handleChange}
+/>
+
+</div>
+
+
+<div>
+
+<Label>Next Follow-up</Label>
+
+<Input
+name="nextFollowUp"
+value={form.nextFollowUp}
+onChange={handleChange}
+/>
+
+</div>
+
+
+<div>
+
+<Label>Tags (comma separated)</Label>
+
+<Input
+name="tags"
+value={form.tags}
 onChange={handleChange}
 />
 
@@ -205,8 +345,6 @@ onChange={handleChange}
 
 </div>
 
-
-{/* Buttons */}
 
 <div className="flex gap-3">
 

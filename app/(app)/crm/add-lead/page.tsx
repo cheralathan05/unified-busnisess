@@ -2,40 +2,40 @@
 
 import AddLead from "@/components/crm/add-lead"
 
-export default function AddLeadPage() {
+export default function AddLeadPage(){
 
-  return (
+return(
 
-    <div className="w-full h-full flex flex-col">
+<div className="w-full h-full flex flex-col">
 
-      <div className="flex-1 overflow-y-auto">
+<div className="flex-1 overflow-y-auto">
 
-        <div className="p-6 md:p-8 space-y-6 max-w-3xl mx-auto">
+<div className="p-6 md:p-8 space-y-6 max-w-3xl mx-auto">
 
-          {/* Header */}
+{/* Header */}
 
-          <div>
+<div>
 
-            <h1 className="text-3xl font-bold">
-              Add New Lead
-            </h1>
+<h1 className="text-3xl font-bold">
+Add New Lead
+</h1>
 
-            <p className="text-muted-foreground mt-1">
-              Create a new lead and start tracking your sales opportunity.
-            </p>
+<p className="text-muted-foreground mt-1">
+Create a new lead and start tracking your sales opportunity.
+</p>
 
-          </div>
+</div>
 
-          {/* Form */}
+{/* Lead Form */}
 
-          <AddLead />
+<AddLead/>
 
-        </div>
+</div>
 
-      </div>
+</div>
 
-    </div>
+</div>
 
-  )
+)
 
 }

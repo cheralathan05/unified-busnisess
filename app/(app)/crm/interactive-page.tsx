@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,7 +14,12 @@ TabsList,
 TabsTrigger
 } from '@/components/ui/tabs'
 
-import { useAppState, type Lead } from '@/hooks/use-app-state'
+import {
+getLeads,
+createLead,
+updateLead,
+deleteLead
+} from '@/lib/services/lead.service'
 
 import { AddLeadModal } from '@/components/modals/add-lead-modal'
 import { LeadDetailModal } from '@/components/modals/lead-detail-modal'
@@ -31,65 +36,150 @@ List
 
 
 const statuses = [
-"New",
-"Contacted",
-"Proposal",
-"Negotiation",
-"Won",
-"Lost"
-] as const
+"NEW",
+"CONTACTED",
+"QUALIFIED",
+"WON",
+"LOST"
+]
 
 
-const statusColors: Record<string,string> = {
-New:'bg-blue-500/10 text-blue-400 border border-blue-500/30',
-Contacted:'bg-purple-500/10 text-purple-400 border border-purple-500/30',
-Proposal:'bg-yellow-500/10 text-yellow-400 border border-yellow-500/30',
-Negotiation:'bg-amber-500/10 text-amber-400 border border-amber-500/30',
-Won:'bg-green-500/10 text-green-400 border border-green-500/30',
-Lost:'bg-red-500/10 text-red-400 border border-red-500/30'
+const statusColors:Record<string,string>={
+
+NEW:'bg-blue-500/10 text-blue-400 border border-blue-500/30',
+
+CONTACTED:'bg-purple-500/10 text-purple-400 border border-purple-500/30',
+
+QUALIFIED:'bg-yellow-500/10 text-yellow-400 border border-yellow-500/30',
+
+WON:'bg-green-500/10 text-green-400 border border-green-500/30',
+
+LOST:'bg-red-500/10 text-red-400 border border-red-500/30'
+
 }
 
 
 export function InteractiveCRMPage(){
 
-const {leads,addLead,updateLead,deleteLead}=useAppState()
+/* DATA */
 
-const [showAddModal,setShowAddModal]=useState(false)
-const [selectedLead,setSelectedLead]=useState<Lead|null>(null)
-const [showDetailModal,setShowDetailModal]=useState(false)
+const [leads,setLeads] = useState<any[]>([])
+const [loading,setLoading] = useState(true)
 
-const [searchQuery,setSearchQuery]=useState("")
-const [viewMode,setViewMode]=useState<'list'|'board'>('list')
+/* UI */
+
+const [showAddModal,setShowAddModal] = useState(false)
+const [selectedLead,setSelectedLead] = useState<any|null>(null)
+const [showDetailModal,setShowDetailModal] = useState(false)
+
+const [searchQuery,setSearchQuery] = useState("")
+const [viewMode,setViewMode] = useState<'list'|'board'>('list')
 
 
-function openLeadDetail(lead:Lead){
+/* LOAD LEADS */
+
+async function loadLeads(){
+
+try{
+
+const res = await getLeads()
+
+setLeads(res.data || [])
+
+}catch(err){
+
+console.error("Failed to fetch leads",err)
+
+}
+
+setLoading(false)
+
+}
+
+useEffect(()=>{
+
+loadLeads()
+
+},[])
+
+
+/* CREATE */
+
+async function handleAddLead(data:any){
+
+await createLead(data)
+
+loadLeads()
+
+}
+
+
+/* UPDATE */
+
+async function handleUpdateLead(id:string,data:any){
+
+await updateLead(id,data)
+
+loadLeads()
+
+}
+
+
+/* DELETE */
+
+async function handleDeleteLead(id:string){
+
+await deleteLead(id)
+
+loadLeads()
+
+}
+
+
+/* OPEN LEAD */
+
+function openLeadDetail(lead:any){
 
 setSelectedLead(lead)
+
 setShowDetailModal(true)
 
 }
 
 
-const filteredLeads=useMemo(()=>{
+/* FILTER */
 
-return leads.filter((lead)=>
+const filteredLeads = useMemo(()=>{
 
-lead.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-lead.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-lead.company.toLowerCase().includes(searchQuery.toLowerCase())
+return leads.filter((lead)=>{
+
+const q = searchQuery.toLowerCase()
+
+return(
+
+lead.name?.toLowerCase().includes(q) ||
+
+lead.email?.toLowerCase().includes(q) ||
+
+lead.company?.toLowerCase().includes(q)
 
 )
+
+})
 
 },[leads,searchQuery])
 
 
-const leadsByStatus=useMemo(()=>{
+/* GROUP */
 
-const grouped:Record<string,Lead[]>={}
+const leadsByStatus = useMemo(()=>{
 
-statuses.forEach((status)=>{
+const grouped:any = {}
 
-grouped[status]=filteredLeads.filter(l=>l.status===status)
+statuses.forEach(status=>{
+
+grouped[status] =
+filteredLeads.filter(l => l.status===status)
 
 })
 
@@ -97,6 +187,25 @@ return grouped
 
 },[filteredLeads])
 
+
+/* LOADING */
+
+if(loading){
+
+return(
+
+<div className="p-10 text-center">
+
+Loading CRM...
+
+</div>
+
+)
+
+}
+
+
+/* PAGE */
 
 return(
 
@@ -109,18 +218,22 @@ return(
 <div>
 
 <h1 className="text-4xl font-bold">
+
 Leads & Customers
+
 </h1>
 
 <p className="text-muted-foreground mt-2">
-Manage your sales pipeline with intelligence
+
+Manage your sales pipeline
+
 </p>
 
 </div>
 
 <Button
 onClick={()=>setShowAddModal(true)}
-className="gap-2 rounded-lg font-semibold shadow-sm"
+className="gap-2"
 >
 
 <Plus className="w-5 h-5"/>
@@ -139,7 +252,7 @@ Add Lead
 <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground"/>
 
 <Input
-placeholder="Search leads by name, email, or company..."
+placeholder="Search leads..."
 value={searchQuery}
 onChange={(e)=>setSearchQuery(e.target.value)}
 className="pl-10"
@@ -152,47 +265,35 @@ className="pl-10"
 
 <Tabs
 value={viewMode}
-onValueChange={(v)=>setViewMode(v as 'list'|'board')}
+onValueChange={(v)=>setViewMode(v as any)}
 >
 
 <TabsList>
 
-<TabsTrigger value="list" className="gap-2">
+<TabsTrigger value="list">
 
-<List className="w-4 h-4"/>
+<List className="w-4 h-4 mr-2"/>
 
-List View
+List
 
 </TabsTrigger>
 
-<TabsTrigger value="board" className="gap-2">
+<TabsTrigger value="board">
 
-<Kanban className="w-4 h-4"/>
+<Kanban className="w-4 h-4 mr-2"/>
 
-Pipeline Board
+Board
 
 </TabsTrigger>
 
 </TabsList>
 
 
-{/* LIST VIEW */}
+{/* LIST */}
 
 <TabsContent value="list" className="space-y-3">
 
-{filteredLeads.length===0?(
-<Card className="p-12 text-center">
-
-<p className="text-muted-foreground">
-
-No leads found. Create your first lead.
-
-</p>
-
-</Card>
-):(
-
-filteredLeads.map((lead)=>(
+{filteredLeads.map((lead:any)=>(
 
 <Card
 key={lead.id}
@@ -200,98 +301,121 @@ className="p-4 hover:shadow-md cursor-pointer"
 onClick={()=>openLeadDetail(lead)}
 >
 
-<div className="flex items-start justify-between">
+<div className="flex justify-between">
 
-<div className="flex-1">
+<div>
 
 <h3 className="font-semibold">
+
 {lead.name}
+
 </h3>
 
 <p className="text-sm text-muted-foreground">
+
 {lead.company}
+
 </p>
 
-<div className="flex flex-wrap gap-4 mt-3 text-sm">
+<div className="flex gap-4 mt-2 text-sm">
 
-<div className="flex items-center gap-1 text-muted-foreground">
+{lead.email && (
+
+<div className="flex gap-1 items-center">
+
 <Mail className="w-4 h-4"/>
+
 {lead.email}
+
 </div>
 
-<div className="flex items-center gap-1 text-muted-foreground">
+)}
+
+{lead.phone && (
+
+<div className="flex gap-1 items-center">
+
 <Phone className="w-4 h-4"/>
+
 {lead.phone}
+
 </div>
 
-<div className="flex items-center gap-1 font-medium">
-<DollarSign className="w-4 h-4"/>
-₹{lead.dealValue.toLocaleString()}
-</div>
+)}
 
 </div>
 
 </div>
+
+<div className="text-right">
+
+<p className="font-semibold">
+
+₹{lead.value?.toLocaleString() || 0}
+
+</p>
 
 <Badge className={statusColors[lead.status]}>
+
 {lead.status}
+
 </Badge>
+
+</div>
 
 </div>
 
 </Card>
 
-))
-
-)}
+))}
 
 </TabsContent>
 
 
-{/* PIPELINE BOARD */}
+{/* BOARD */}
 
 <TabsContent value="board">
 
-<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
 
-{statuses.map((status)=>{
+{statuses.map(status=>{
 
-const columnLeads=leadsByStatus[status]
+const columnLeads = leadsByStatus[status]
 
 return(
 
 <div key={status} className="space-y-3">
 
-<div className="flex items-center justify-between">
-
 <h3 className="font-semibold">
+
 {status}
+
 </h3>
 
-<Badge variant="secondary">
-{columnLeads.length}
-</Badge>
-
-</div>
-
-{columnLeads.map((lead)=>(
+{columnLeads.map((lead:any)=>(
 
 <Card
 key={lead.id}
-className="p-3 hover:shadow-md cursor-pointer"
+className="p-3 cursor-pointer hover:shadow"
 onClick={()=>openLeadDetail(lead)}
 >
 
 <h4 className="font-medium text-sm">
+
 {lead.name}
+
 </h4>
 
 <p className="text-xs text-muted-foreground">
+
 {lead.company}
+
 </p>
 
-<p className="font-semibold text-primary mt-2">
-₹{lead.dealValue.toLocaleString()}
+<p className="font-semibold mt-2">
+
+₹{lead.value?.toLocaleString()}
+
 </p>
 
 </Card>
@@ -311,23 +435,20 @@ onClick={()=>openLeadDetail(lead)}
 </Tabs>
 
 
-{/* ADD LEAD */}
+{/* MODALS */}
 
 <AddLeadModal
 open={showAddModal}
 onOpenChange={setShowAddModal}
-onAddLead={addLead}
+onAddLead={handleAddLead}
 />
-
-
-{/* LEAD DETAILS */}
 
 <LeadDetailModal
 open={showDetailModal}
 onOpenChange={setShowDetailModal}
 lead={selectedLead}
-onUpdateLead={updateLead}
-onDeleteLead={deleteLead}
+onUpdateLead={handleUpdateLead}
+onDeleteLead={handleDeleteLead}
 />
 
 </div>

@@ -1,40 +1,92 @@
 'use client'
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
-export default function LeadAttachments(){
+import DocumentUpload from "./document-upload"
+import DocumentList from "./document-list"
 
-const [files,setFiles] = useState<File[]>([])
+import { CRMDocument } from "./document-utils"
 
-function upload(e:any){
+import {
+getDocuments
+} from "@/lib/services/document.service"
 
-setFiles([...files,...e.target.files])
+interface Props{
+
+leadId:string
 
 }
 
+export default function LeadAttachments({leadId}:Props){
+
+const [documents,setDocuments] =
+useState<CRMDocument[]>([])
+
+const [loading,setLoading] =
+useState(true)
+
+async function loadDocuments(){
+
+try{
+
+const res = await getDocuments(leadId)
+
+setDocuments(res.data || [])
+
+}catch(err){
+
+console.error("Load documents failed",err)
+
+}finally{
+
+setLoading(false)
+
+}
+
+}
+
+function handleUpload(doc:CRMDocument){
+
+setDocuments(prev=>[doc,...prev])
+
+}
+
+useEffect(()=>{
+
+loadDocuments()
+
+},[leadId])
+
 return(
 
-<div>
+<div className="space-y-4">
 
-<h3 className="font-semibold mb-3">
+<h3 className="font-semibold">
 Attachments
 </h3>
 
-<input
-type="file"
-multiple
-onChange={upload}
+{/* Upload */}
+
+<DocumentUpload
+leadId={leadId}
+onUpload={handleUpload}
 />
 
-<ul className="mt-3">
+{/* List */}
 
-{files.map((f,i)=>(
-<li key={i}>
-{f.name}
-</li>
-))}
+{loading ? (
 
-</ul>
+<p className="text-sm text-muted-foreground">
+Loading documents...
+</p>
+
+) : (
+
+<DocumentList
+leadId={leadId}
+/>
+
+)}
 
 </div>
 

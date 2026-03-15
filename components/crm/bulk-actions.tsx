@@ -1,55 +1,133 @@
 'use client'
 
 import { Button } from "@/components/ui/button"
-import { Trash2,Download } from "lucide-react"
+import { Trash2, Download } from "lucide-react"
 
-interface Props{
+import { deleteLead } from "@/lib/services/lead.service"
 
-selectedIds:string[]
-onDelete:(ids:string[])=>void
+interface Lead {
+
+  id: string
+  name: string
+  email?: string
+  phone?: string
+  company?: string
+
+}
+
+interface Props {
+
+  selectedLeads: Lead[]
+  refreshLeads: () => void
 
 }
 
 export default function BulkActions({
-selectedIds,
-onDelete
-}:Props){
 
-if(selectedIds.length===0)return null
+  selectedLeads,
+  refreshLeads
 
-return(
+}: Props) {
 
-<div className="flex gap-3 items-center p-3 bg-muted rounded">
+  if (selectedLeads.length === 0) return null
 
-<span className="text-sm">
-{selectedIds.length} selected
-</span>
+  async function handleDelete() {
 
-<Button
-variant="destructive"
-size="sm"
-onClick={()=>onDelete(selectedIds)}
->
+    const confirmDelete = confirm(
+      `Delete ${selectedLeads.length} leads?`
+    )
 
-<Trash2 className="w-4 h-4 mr-1"/>
+    if (!confirmDelete) return
 
-Delete
+    try {
 
-</Button>
+      await Promise.all(
+        selectedLeads.map((lead) =>
+          deleteLead(lead.id)
+        )
+      )
 
-<Button
-variant="outline"
-size="sm"
->
+      refreshLeads()
 
-<Download className="w-4 h-4 mr-1"/>
+    } catch (err) {
 
-Export CSV
+      console.error("Bulk delete failed", err)
 
-</Button>
+    }
 
-</div>
+  }
 
-)
+  function exportCSV(){
+
+    const rows = selectedLeads.map((lead)=>({
+
+      name:lead.name,
+      email:lead.email ?? "",
+      phone:lead.phone ?? "",
+      company:lead.company ?? ""
+
+    }))
+
+    const header = "Name,Email,Phone,Company\n"
+
+    const body = rows
+      .map(r =>
+        `${r.name},${r.email},${r.phone},${r.company}`
+      )
+      .join("\n")
+
+    const csv = header + body
+
+    const blob = new Blob([csv],{type:"text/csv"})
+
+    const url = URL.createObjectURL(blob)
+
+    const a = document.createElement("a")
+
+    a.href = url
+    a.download = "leads-export.csv"
+    a.click()
+
+    URL.revokeObjectURL(url)
+
+  }
+
+  return (
+
+    <div className="flex gap-3 items-center p-3 bg-muted rounded">
+
+      <span className="text-sm font-medium">
+
+        {selectedLeads.length} selected
+
+      </span>
+
+      <Button
+        variant="destructive"
+        size="sm"
+        onClick={handleDelete}
+      >
+
+        <Trash2 className="w-4 h-4 mr-1"/>
+
+        Delete
+
+      </Button>
+
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={exportCSV}
+      >
+
+        <Download className="w-4 h-4 mr-1"/>
+
+        Export CSV
+
+      </Button>
+
+    </div>
+
+  )
 
 }

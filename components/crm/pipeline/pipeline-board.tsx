@@ -1,15 +1,59 @@
 'use client'
 
 import { DndContext } from "@dnd-kit/core"
-
-import { useAppState } from "@/hooks/use-app-state"
+import { useState } from "react"
 
 import PipelineColumn from "./pipeline-column"
 import { PIPELINE_STAGES } from "./pipeline-utils"
 
-export default function PipelineBoard() {
+import { updateLead } from "@/lib/services/lead.service"
 
-  const { leads, updateLead } = useAppState()
+interface Lead {
+  id: string
+  name: string
+  status: string
+}
+
+interface Props {
+  leads: Lead[]
+  refreshLeads: () => void
+}
+
+export default function PipelineBoard({
+
+  leads,
+  refreshLeads
+
+}: Props) {
+
+  const [loading, setLoading] = useState(false)
+
+  async function updateLeadStage(
+    leadId: string,
+    newStage: string
+  ) {
+
+    try {
+
+      setLoading(true)
+
+      await updateLead(leadId, {
+        status: newStage
+      })
+
+      refreshLeads()
+
+    } catch (err) {
+
+      console.error("Pipeline update failed", err)
+
+    } finally {
+
+      setLoading(false)
+
+    }
+
+  }
 
   function handleDragEnd(event: any) {
 
@@ -20,9 +64,7 @@ export default function PipelineBoard() {
     const leadId = active.id
     const newStage = over.id
 
-    updateLead(leadId, {
-      status: newStage
-    })
+    updateLeadStage(leadId, newStage)
 
   }
 
@@ -44,6 +86,7 @@ export default function PipelineBoard() {
               key={stage}
               stage={stage}
               leads={stageLeads}
+              loading={loading}
             />
 
           )
