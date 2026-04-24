@@ -1,0 +1,12 @@
+export const AI_THRESHOLDS = {
+  HOT: 80,
+  WARM: 50
+};
+
+export const SCORE_WEIGHTS = {
+  VALUE_HIGH: 30,
+  STAGE_NEGOTIATION: 25,
+  STAGE_PROPOSAL: 15,
+  HAS_EMAIL: 10,
+  HAS_PHONE: 10
+};

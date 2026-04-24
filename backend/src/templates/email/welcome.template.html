@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #0B0F1A;
+      font-family: 'Segoe UI', sans-serif;
+    }
+
+.container {
+  max-width: 500px;
+  margin: 40px auto;
+  padding: 30px;
+  background: linear-gradient(135deg, #111827, #1f2937);
+  border-radius: 16px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Animated glowing border */
+.container::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 16px;
+  background: linear-gradient(270deg, #8B5CF6, #00F5FF, #8B5CF6);
+  background-size: 600% 600%;
+  animation: borderFlow 6s ease infinite;
+  z-index: -1;
+}
+
+@keyframes borderFlow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Floating particles */
+.particle {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: #8B5CF6;
+  border-radius: 50%;
+  opacity: 0.6;
+  animation: float 6s infinite ease-in-out;
+}
+
+.particle:nth-child(1) { top: 10%; left: 20%; animation-delay: 0s; }
+.particle:nth-child(2) { top: 80%; left: 70%; animation-delay: 2s; }
+.particle:nth-child(3) { top: 50%; left: 10%; animation-delay: 4s; }
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); opacity: 0.3; }
+  50% { transform: translateY(-15px); opacity: 1; }
+}
+
+h2 {
+  font-size: 24px;
+  margin-bottom: 10px;
+  background: linear-gradient(90deg, #8B5CF6, #00F5FF);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: glowText 2s infinite alternate;
+}
+
+@keyframes glowText {
+  from { text-shadow: 0 0 5px #8B5CF6; }
+  to { text-shadow: 0 0 15px #00F5FF; }
+}
+
+p {
+  color: #d1d5db;
+  font-size: 15px;
+  margin: 10px 0;
+}
+
+/* Button animation */
+.btn {
+  display: inline-block;
+  margin-top: 20px;
+  padding: 12px 24px;
+  border-radius: 30px;
+  text-decoration: none;
+  color: white;
+  background: linear-gradient(90deg, #8B5CF6, #00F5FF);
+  animation: pulse 2s infinite;
+  font-weight: bold;
+}
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0px rgba(139,92,246,0.5); }
+  50% { box-shadow: 0 0 20px rgba(0,245,255,0.8); }
+  100% { box-shadow: 0 0 0px rgba(139,92,246,0.5); }
+}
+  </style>
+</head>
+
+<body>
+  <div class="container">
+
+```
+<!-- floating particles -->
+<div class="particle"></div>
+<div class="particle"></div>
+<div class="particle"></div>
+
+<h2>Welcome to Digital Brain 🚀</h2>
+
+<p>Hello <strong>{{NAME}}</strong>,</p>
+
+<p>Your AI-powered business system is now ready.</p>
+
+<p>Let’s automate. Let’s scale. Let’s dominate.</p>
+
+<a href="#" class="btn">Launch Dashboard</a>
+```
+
+  </div>
+</body>
+</html> 

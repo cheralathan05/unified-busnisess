@@ -1,0 +1,361 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+//
+// ======================
+// USER
+// ======================
+model User {
+  id             String   @id @default(uuid())
+  name           String?
+  email          String   @unique
+  password       String?
+  companyName    String?
+  role           String   @default("USER")
+  isVerified     Boolean  @default(false)
+
+  provider       String?
+  providerId     String?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  sessions       Session[]
+  tokens         Token[]
+  credentials    Credential[]
+  audits         Audit[]
+
+  // ✅ CRM RELATIONS
+  leads          Lead[]
+  activities     Activity[]
+  payments       Payment[]
+  decisions      Decision[]
+  aiLogs         AILog[]
+  meetings       Meeting[]
+
+  @@index([email])
+}
+
+//
+// ======================
+// SESSION
+// ======================
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  refreshToken String   @unique
+  userAgent    String?
+  ip           String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  deletedAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([refreshToken])
+}
+
+//
+// ======================
+// TOKEN
+// ======================
+model Token {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  deletedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+//
+// ======================
+// OTP
+// ======================
+model Otp {
+  id        String   @id @default(uuid())
+  email     String
+  code      String
+  type      String
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([type])
+}
+
+//
+// ======================
+// AUDIT
+// ======================
+model Audit {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  meta      Json?
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([action])
+}
+
+//
+// ======================
+// WEBAUTHN
+// ======================
+model Credential {
+  id           String   @id @default(uuid())
+  userId       String
+  credentialId String   @unique
+  publicKey    String
+  counter      Int
+  createdAt    DateTime @default(now())
+  deletedAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+//
+// ======================
+// CRM: LEAD
+// ======================
+model Lead {
+  id        String   @id @default(uuid())
+  name      String
+  company   String
+  value     Float
+  score     Int      @default(0)
+  stage     String
+
+  email     String?
+  phone     String?
+  summary   String?
+  insights  Json?
+  nextAction String?
+  confidence Float?
+  priority  String   @default("low")
+  promptVersion String?
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  activities Activity[]
+  payments   Payment[]
+  invoices   Invoice[]
+  decisions  Decision[]
+  aiLogs     AILog[]
+  meetings   Meeting[]
+
+  @@index([userId])
+  @@index([stage])
+}
+
+enum DecisionStatus {
+  suggested
+  approved
+  rejected
+  executed
+}
+
+enum ActionStatus {
+  pending
+  done
+  failed
+}
+
+model Decision {
+  id             String         @id @default(uuid())
+  userId         String
+  leadId         String
+  type           String
+  input          Json
+  recommendation Json
+  confidence     Float
+  promptVersion  String?
+  status         DecisionStatus @default(suggested)
+  createdAt      DateTime       @default(now())
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lead     Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  actions  Action[]
+  outcomes Outcome[]
+
+  @@index([userId])
+  @@index([leadId])
+  @@index([status])
+}
+
+model AILog {
+  id            String   @id @default(uuid())
+  userId        String?
+  leadId        String?
+  prompt        String
+  response      String?
+  latencyMs     Int
+  success       Boolean
+  promptVersion String?
+  error         String?
+  createdAt     DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  lead Lead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([leadId])
+  @@index([createdAt])
+}
+
+model Action {
+  id         String       @id @default(uuid())
+  decisionId String
+  type       String
+  payload    Json
+  status     ActionStatus @default(pending)
+  createdAt  DateTime     @default(now())
+
+  decision Decision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+
+  @@index([decisionId])
+}
+
+model Outcome {
+  id         String   @id @default(uuid())
+  decisionId String
+  result     Json
+  success    Boolean
+  createdAt  DateTime @default(now())
+
+  decision Decision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+
+  @@index([decisionId])
+}
+
+model Policy {
+  id      String  @id @default(uuid())
+  name    String
+  version String
+  rules   Json
+  active  Boolean @default(false)
+
+  @@index([name])
+  @@index([active])
+}
+
+//
+// ======================
+// CRM: ACTIVITY (TIMELINE)
+// ======================
+model Activity {
+  id        String   @id @default(uuid())
+  type      String
+  text      String?
+  status    String?
+
+  userId    String
+  leadId    String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([leadId])
+}
+
+//
+// ======================
+// CRM: PAYMENT
+// ======================
+model Payment {
+  id        String   @id @default(uuid())
+  amount    Float
+  status    String
+
+  userId    String
+  leadId    String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([leadId])
+}
+
+//
+// ======================
+// CRM: INVOICE
+// ======================
+model Invoice {
+  id        String   @id @default(uuid())
+  total     Float
+  status    String
+
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([leadId])
+}
+
+model Meeting {
+  id           String   @id @default(uuid())
+  title        String
+  meetingType  String
+  dateTime     DateTime
+  meetingLink  String?
+  status       String   @default("scheduled")
+  attendees    Json?
+  phoneNumber  String?
+  providerMeta Json?
+
+  userId       String
+  leadId       String
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lead         Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+  @@index([leadId])
+  @@index([status])
+  @@index([dateTime])
+}
+
+//
+// ======================
+// PLATFORM STATE
+// ======================
+model PlatformState {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

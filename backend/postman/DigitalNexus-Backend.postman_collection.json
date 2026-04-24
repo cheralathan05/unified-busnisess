@@ -1,0 +1,353 @@
+{
+  "info": {
+    "name": "DigitalNexus Backend Full Flow",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Full backend validation flow with token auto-refresh and variable propagation."
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const reqUrl = pm.request.url.toString();",
+          "const publicPaths = [",
+          "  '/health',",
+          "  '/auth/register',",
+          "  '/auth/login',",
+          "  '/auth/refresh'",
+          "];",
+          "const isPublic = publicPaths.some((p) => reqUrl.includes(p));",
+          "if (isPublic) { return; }",
+          "const accessToken = pm.environment.get('accessToken');",
+          "const refreshToken = pm.environment.get('refreshToken');",
+          "const expiry = Number(pm.environment.get('accessTokenExpiry') || 0);",
+          "const now = Date.now();",
+          "if (!accessToken) {",
+          "  throw new Error('Missing accessToken. Run Auth > Login first.');",
+          "}",
+          "if (expiry && now < expiry - 15000) { return; }",
+          "if (!refreshToken) {",
+          "  throw new Error('Access token expired and refreshToken missing. Run Login again.');",
+          "}",
+          "pm.sendRequest({",
+          "  url: pm.environment.get('base_url') + '/auth/refresh',",
+          "  method: 'POST',",
+          "  header: { 'Content-Type': 'application/json' },",
+          "  body: { mode: 'raw', raw: JSON.stringify({ refreshToken }) }",
+          "}, function (err, res) {",
+          "  if (err || !res) { throw new Error('Auto-refresh failed: no response'); }",
+          "  if (res.code >= 400) { throw new Error('Auto-refresh failed: HTTP ' + res.code); }",
+          "  let payload = {};",
+          "  try { payload = res.json(); } catch (e) {}",
+          "  const newToken = payload?.data?.accessToken || payload?.accessToken;",
+          "  const newRefresh = payload?.data?.refreshToken || payload?.refreshToken;",
+          "  if (!newToken) { throw new Error('Auto-refresh failed: accessToken not returned'); }",
+          "  pm.environment.set('accessToken', newToken);",
+          "  if (newRefresh) pm.environment.set('refreshToken', newRefresh);",
+          "  pm.environment.set('accessTokenExpiry', String(Date.now() + 14 * 60 * 1000));",
+          "});"
+        ]
+      }
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      { "key": "token", "value": "{{accessToken}}", "type": "string" }
+    ]
+  },
+  "item": [
+    {
+      "name": "1 Health",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "GET",
+        "url": "{{base_url}}/health"
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Health 200', () => pm.response.to.have.status(200));"] } }]
+    },
+    {
+      "name": "2 Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Chera Test\",\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "const access = r?.data?.accessToken;",
+                  "const refresh = r?.data?.refreshToken;",
+                  "pm.expect(access).to.be.a('string');",
+                  "pm.expect(refresh).to.be.a('string');",
+                  "pm.environment.set('accessToken', access);",
+                  "pm.environment.set('refreshToken', refresh);",
+                  "pm.environment.set('accessTokenExpiry', String(Date.now() + 14 * 60 * 1000));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Auth Me",
+          "request": { "method": "GET", "url": "{{base_url}}/auth/me" }
+        },
+        {
+          "name": "Refresh",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/auth/refresh",
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const r = pm.response.json(); const t = r?.data?.accessToken || r?.accessToken; if (t) { pm.environment.set('accessToken', t); pm.environment.set('accessTokenExpiry', String(Date.now() + 14 * 60 * 1000)); }"] } }]
+        },
+        {
+          "name": "Logout",
+          "request": { "method": "POST", "url": "{{base_url}}/auth/logout" }
+        }
+      ]
+    },
+    {
+      "name": "3 Onboarding",
+      "item": [
+        {
+          "name": "Start",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/onboarding/start",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Chera\"\n}" }
+          }
+        },
+        {
+          "name": "Business",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/onboarding/business",
+            "body": { "mode": "raw", "raw": "{\n  \"companyName\": \"Chera AI Labs\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 Leads",
+      "item": [
+        {
+          "name": "Create Lead",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/leads",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"John CEO\",\n  \"company\": \"Acme Corp\",\n  \"value\": 50000,\n  \"stage\": \"Discovery\",\n  \"email\": \"john@acme.com\",\n  \"phone\": \"9876543210\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const r = pm.response.json(); if (r?.data?.id) pm.environment.set('leadId', r.data.id);"] } }]
+        },
+        {
+          "name": "Create Duplicate Lead (for dedup)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/leads",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"John CEO Copy\",\n  \"company\": \"Acme Corp\",\n  \"value\": 15000,\n  \"stage\": \"Discovery\",\n  \"email\": \"john@acme.com\",\n  \"phone\": \"9876543210\"\n}" }
+          }
+        },
+        { "name": "Get All", "request": { "method": "GET", "url": "{{base_url}}/leads?page=1&limit=10" } },
+        { "name": "Search", "request": { "method": "GET", "url": "{{base_url}}/leads?search=Acme" } },
+        { "name": "Filter", "request": { "method": "GET", "url": "{{base_url}}/leads?stage=Discovery&minScore=10" } },
+        { "name": "Get One", "request": { "method": "GET", "url": "{{base_url}}/leads/{{leadId}}" } },
+        {
+          "name": "Update",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/leads/{{leadId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"stage\": \"Negotiation\",\n  \"value\": 90000\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 Activity",
+      "item": [
+        {
+          "name": "Create Activity",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/activities",
+            "body": { "mode": "raw", "raw": "{\n  \"leadId\": \"{{leadId}}\",\n  \"type\": \"call\",\n  \"note\": \"Follow up\"\n}" }
+          }
+        },
+        { "name": "Get Activities", "request": { "method": "GET", "url": "{{base_url}}/activities" } }
+      ]
+    },
+    {
+      "name": "6 Payments",
+      "item": [
+        {
+          "name": "Create Payment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/payments",
+            "body": { "mode": "raw", "raw": "{\n  \"leadId\": \"{{leadId}}\",\n  \"amount\": 30000\n}" }
+          }
+        },
+        { "name": "Get Payments", "request": { "method": "GET", "url": "{{base_url}}/payments" } }
+      ]
+    },
+    { "name": "7 Analytics", "request": { "method": "GET", "url": "{{base_url}}/analytics/dashboard" } },
+    {
+      "name": "8 Communication",
+      "item": [
+        {
+          "name": "AI Email",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/communication/ai-email",
+            "body": { "mode": "raw", "raw": "{\n  \"lead\": {\n    \"company\": \"Acme Corp\",\n    \"stage\": \"Proposal\",\n    \"value\": 50000,\n    \"score\": 85\n  }\n}" }
+          }
+        },
+        {
+          "name": "Email",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/communication/email",
+            "body": { "mode": "raw", "raw": "{\n  \"to\": \"{{email}}\",\n  \"subject\": \"Follow up\",\n  \"text\": \"Hello from CRM\"\n}" }
+          }
+        },
+        {
+          "name": "WhatsApp",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/communication/whatsapp",
+            "body": { "mode": "raw", "raw": "{\n  \"to\": \"9876543210\",\n  \"message\": \"Hi from CRM\"\n}" }
+          }
+        },
+        {
+          "name": "Schedule",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/communication/schedule",
+            "body": { "mode": "raw", "raw": "{\n  \"time\": \"2026-04-01T10:00:00Z\",\n  \"participants\": [\"test@gmail.com\"]\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "9 AI Advanced",
+      "item": [
+        { "name": "Summary", "request": { "method": "GET", "url": "{{base_url}}/leads/{{leadId}}/summary" } },
+        { "name": "Insights", "request": { "method": "GET", "url": "{{base_url}}/leads/{{leadId}}/insights" } },
+        { "name": "Action", "request": { "method": "GET", "url": "{{base_url}}/leads/{{leadId}}/action" } }
+      ]
+    },
+    {
+      "name": "10 Brain",
+      "item": [
+        {
+          "name": "Suggestions",
+          "request": { "method": "GET", "url": "{{base_url}}/brain/suggestions" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const r = pm.response.json(); if (r?.data?.length) pm.environment.set('brainId', r.data[0].id);"] } }]
+        },
+        { "name": "Approve", "request": { "method": "POST", "url": "{{base_url}}/brain/{{brainId}}/approve" } },
+        { "name": "Reject", "request": { "method": "POST", "url": "{{base_url}}/brain/{{brainId}}/reject" } }
+      ]
+    },
+    {
+      "name": "11 Dedup",
+      "item": [
+        {
+          "name": "Get Dedup",
+          "request": { "method": "GET", "url": "{{base_url}}/dedup" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const r = pm.response.json(); if (r?.data?.length) { pm.environment.set('duplicateBaseId', r.data[0].baseId); pm.environment.set('duplicateIds', JSON.stringify(r.data[0].duplicates || [])); }"] } }]
+        },
+        {
+          "name": "Merge Dedup",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/dedup/merge",
+            "body": { "mode": "raw", "raw": "{\n  \"baseId\": \"{{duplicateBaseId}}\",\n  \"duplicateIds\": {{duplicateIds}}\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "12 Export",
+      "item": [
+        { "name": "CSV", "request": { "method": "GET", "url": "{{base_url}}/export/csv" } },
+        { "name": "Excel", "request": { "method": "GET", "url": "{{base_url}}/export/excel" } },
+        { "name": "PDF", "request": { "method": "GET", "url": "{{base_url}}/export/pdf" } }
+      ]
+    },
+    {
+      "name": "13 Stages",
+      "item": [
+        { "name": "Get", "request": { "method": "GET", "url": "{{base_url}}/stages" } },
+        {
+          "name": "Add",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/stages/add",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"TmpStage\"\n}" }
+          }
+        },
+        {
+          "name": "Update",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/stages",
+            "body": { "mode": "raw", "raw": "{\n  \"stages\": [\"Discovery\",\"Proposal\",\"Negotiation\",\"Won\"]\n}" }
+          }
+        },
+        {
+          "name": "Remove",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/stages/remove",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"TmpStage\"\n}" }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+// src/events/types/event.types.ts
+
+export enum Events {
+  // ======================
+  // AUTH EVENTS
+  // ======================
+  USER_REGISTERED = "USER_REGISTERED",
+  USER_LOGGED_IN = "USER_LOGGED_IN",
+  USER_LOGGED_OUT = "USER_LOGGED_OUT",
+
+  PASSWORD_RESET_REQUESTED = "PASSWORD_RESET_REQUESTED",
+  PASSWORD_RESET_SUCCESS = "PASSWORD_RESET_SUCCESS",
+
+  EMAIL_VERIFICATION_REQUESTED = "EMAIL_VERIFICATION_REQUESTED",
+  EMAIL_VERIFIED = "EMAIL_VERIFIED",
+
+  REFRESH_TOKEN_CREATED = "REFRESH_TOKEN_CREATED",
+  TOKEN_REFRESHED = "TOKEN_REFRESHED",
+
+  // ======================
+  // USER EVENTS
+  // ======================
+  USER_UPDATED = "USER_UPDATED",
+  USER_DELETED = "USER_DELETED",
+
+  // ======================
+  // SECURITY EVENTS
+  // ======================
+  FAILED_LOGIN = "FAILED_LOGIN",
+  ACCOUNT_LOCKED = "ACCOUNT_LOCKED",
+  ACCOUNT_UNLOCKED = "ACCOUNT_UNLOCKED",
+  SUSPICIOUS_LOGIN = "SUSPICIOUS_LOGIN",
+  PASSWORD_CHANGED = "PASSWORD_CHANGED",
+
+  DEVICE_REGISTERED = "DEVICE_REGISTERED",
+  DEVICE_REMOVED = "DEVICE_REMOVED",
+
+  // ======================
+  // SESSION EVENTS
+  // ======================
+  SESSION_CREATED = "SESSION_CREATED",
+  SESSION_TERMINATED = "SESSION_TERMINATED",
+  ALL_SESSIONS_TERMINATED = "ALL_SESSIONS_TERMINATED",
+
+  // ======================
+  // OTP EVENTS
+  // ======================
+  OTP_CREATED = "OTP_CREATED",
+  OTP_VERIFIED = "OTP_VERIFIED",
+  OTP_FAILED = "OTP_FAILED",
+  OTP_EXPIRED = "OTP_EXPIRED",
+
+  // ======================
+  // AUDIT EVENTS
+  // ======================
+  AUDIT_LOG = "AUDIT_LOG",
+
+  // ======================
+  // NOTIFICATION EVENTS
+  // ======================
+  NOTIFICATION_SEND = "NOTIFICATION_SEND",
+
+  // ======================
+  // SYSTEM EVENTS
+  // ======================
+  SYSTEM_ERROR = "SYSTEM_ERROR",
+}
