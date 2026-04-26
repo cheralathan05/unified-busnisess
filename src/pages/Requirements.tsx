@@ -17,8 +17,7 @@ import {
   Users,
   Zap,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import { DashboardLayout } from "@/components/DashboardLayout";
+import { useNavigate } from yout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
