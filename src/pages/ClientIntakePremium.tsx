@@ -129,6 +129,13 @@ const defaultForm: ClientIntakeForm = {
   suggestionNotes: [],
 };
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
+const PHONE_REGEX = /^(?:\+?\d{1,3}[\s-]?)?\d{10}$/;
+const CONTACT_NAME_REGEX = /^[A-Za-z][A-Za-z\s.'-]{1,59}$/;
+const BUSINESS_NAME_REGEX = /^[A-Za-z0-9][A-Za-z0-9\s&.,'()/-]{1,79}$/;
+const COMPANY_SIZE_REGEX = /^(?:\d{1,6}(?:\s*-\s*\d{1,6})?|\d{1,6}\+|[A-Za-z][A-Za-z0-9\s&-]{1,40})$/;
+const TARGET_AUDIENCE_REGEX = /^(?=.*[A-Za-z])[A-Za-z0-9\s,&.'()/-]{3,120}$/;
+
 const formatInr = (value: number) =>
   new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -153,6 +160,12 @@ const getDaysToDeadline = (deadline: string) => {
   return Math.max(0, Math.ceil((date - now) / (1000 * 60 * 60 * 24)));
 };
 
+const isValidFutureDateTime = (value: string) => {
+  const parsed = new Date(value).getTime();
+  if (Number.isNaN(parsed)) return false;
+  return parsed > Date.now();
+};
+
 const makeAiSummary = (form: ClientIntakeForm) => {
   const urgency =
     form.priority === "urgent" ? "high urgency" : form.priority === "medium" ? "balanced urgency" : "flexible timeline";
@@ -164,6 +177,7 @@ export default function ClientIntakePremium() {
   const navigate = useNavigate();
 
   const [currentStep, setCurrentStep] = useState(1);
+  const [highestUnlockedStep, setHighestUnlockedStep] = useState(1);
   const [form, setForm] = useState<ClientIntakeForm>(defaultForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [dragActive, setDragActive] = useState(false);
@@ -349,28 +363,65 @@ export default function ClientIntakePremium() {
 
   const validateStep = (step: number) => {
     const nextErrors: Record<string, string> = {};
+    const businessName = form.businessName.trim();
+    const contactName = form.contactName.trim();
+    const email = form.email.trim();
+    const phone = form.phone.trim();
+    const companySize = form.companySize.trim();
+    const ideaDescription = form.ideaDescription.trim();
+    const targetAudience = form.targetAudience.trim();
 
     if (step === 1) {
-      if (!form.businessName.trim()) nextErrors.businessName = "Business name is required";
+      if (!businessName) nextErrors.businessName = "Business name is required";
+      else if (!BUSINESS_NAME_REGEX.test(businessName)) {
+        nextErrors.businessName = "Enter a valid business name (2-80 chars)";
+      }
+
       if (!form.industry.trim()) nextErrors.industry = "Select an industry";
-      if (!form.contactName.trim()) nextErrors.contactName = "Contact name is required";
-      if (!form.email.includes("@")) nextErrors.email = "Enter a valid email";
-      if (!form.phone.trim()) nextErrors.phone = "Phone is required";
-      if (!form.companySize.trim()) nextErrors.companySize = "Company size is required";
+
+      if (!contactName) nextErrors.contactName = "Contact name is required";
+      else if (!CONTACT_NAME_REGEX.test(contactName)) {
+        nextErrors.contactName = "Enter a valid contact name";
+      }
+
+      if (!email) nextErrors.email = "Email is required";
+      else if (!EMAIL_REGEX.test(email)) {
+        nextErrors.email = "Enter a valid email address";
+      }
+
+      if (!phone) nextErrors.phone = "Phone is required";
+      else if (!PHONE_REGEX.test(phone.replace(/[()]/g, ""))) {
+        nextErrors.phone = "Enter a valid phone number";
+      }
+
+      if (!companySize) nextErrors.companySize = "Company size is required";
+      else if (!COMPANY_SIZE_REGEX.test(companySize)) {
+        nextErrors.companySize = "Use format like 50-200, 200+, or Small team";
+      }
     }
 
     if (step === 2) {
       if (!form.projectType) nextErrors.projectType = "Project type is required";
       if (!form.features.length) nextErrors.features = "Select at least one feature";
-      if (!form.ideaDescription.trim()) nextErrors.ideaDescription = "Describe your idea";
-      if (!form.targetAudience.trim()) nextErrors.targetAudience = "Target audience is required";
+      if (!ideaDescription) nextErrors.ideaDescription = "Describe your idea";
+      else if (ideaDescription.length < 20) {
+        nextErrors.ideaDescription = "Idea description should be at least 20 characters";
+      }
+
+      if (!targetAudience) nextErrors.targetAudience = "Target audience is required";
+      else if (!TARGET_AUDIENCE_REGEX.test(targetAudience)) {
+        nextErrors.targetAudience = "Enter a valid target audience";
+      }
     }
 
     if (step === 3) {
-      if (!form.deadline || Number.isNaN(new Date(form.deadline).getTime())) {
-        nextErrors.deadline = "Select a valid deadline";
+      if (!form.deadline || !isValidFutureDateTime(form.deadline)) {
+        nextErrors.deadline = "Select a future deadline";
       }
       if (!form.priority) nextErrors.priority = "Select priority";
+      if (!Number.isFinite(form.budget) || form.budget < 1000) {
+        nextErrors.budget = "Budget should be at least INR 1,000";
+      }
     }
 
     if (step === 6) {
@@ -384,11 +435,13 @@ export default function ClientIntakePremium() {
 
   const onNext = () => {
     if (!validateStep(currentStep)) return;
-    setCurrentStep((prev) => Math.min(6, prev + 1));
+    const nextStep = Math.min(6, currentStep + 1);
+    setCurrentStep(nextStep);
+    setHighestUnlockedStep((prev) => Math.max(prev, nextStep));
   };
 
   const onBack = () => {
-    setCurrentStep((prev) => Math.max(1, prev - 1));
+    setCurrentStep(Math.max(1, currentStep - 1));
   };
 
   const onSubmit = async () => {
@@ -603,17 +656,30 @@ export default function ClientIntakePremium() {
 
           <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-6">
             {steps.map((label, index) => (
-              <button
-                key={label}
-                onClick={() => setCurrentStep(index + 1)}
-                className={`rounded-lg border px-2 py-1.5 text-xs transition ${
-                  currentStep === index + 1
-                    ? "border-cyan-200/60 bg-cyan-200/15 text-cyan-100"
-                    : "border-white/10 bg-white/5 text-white/60 hover:text-white"
-                }`}
-              >
-                {index + 1}. {label}
-              </button>
+              (() => {
+                const stepNumber = index + 1;
+                const isActive = currentStep === stepNumber;
+                const isLocked = stepNumber > highestUnlockedStep;
+
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    disabled={isLocked}
+                    onClick={() => {
+                      if (isLocked) return;
+                      setCurrentStep(stepNumber);
+                    }}
+                    className={`rounded-lg border px-2 py-1.5 text-xs transition ${
+                      isActive
+                        ? "border-cyan-200/60 bg-cyan-200/15 text-cyan-100"
+                        : "border-white/10 bg-white/5 text-white/60"
+                    } ${isLocked ? "cursor-not-allowed opacity-45" : "hover:text-white"}`}
+                  >
+                    {stepNumber}. {label}
+                  </button>
+                );
+              })()
             ))}
           </div>
         </div>

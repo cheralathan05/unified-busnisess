@@ -6,11 +6,7 @@ import {
   CheckCircle2,
   CircleDollarSign,
   FileUp,
-  Mail,
-  MessageCircle,
-  Phone,
   Sparkles,
-  Star,
   WandSparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider";
 import { getClientAccessById } from "@/lib/collaboration-store";
 import { getLeadById } from "@/lib/lead-store";
+import { checkOllamaHealth } from "@/lib/ai-ollama-service";
 import {
   getClientLinkByToken,
   submitIntakeToBackend,
@@ -43,6 +40,15 @@ const steps = [
   "Package Selection",
   "File Upload",
   "Meeting & Agreement",
+];
+
+const stepInfo = [
+  { label: "Client Information", tip: "Use your official business details for better proposal accuracy." },
+  { label: "Project Requirements", tip: "Be specific here so the proposal and AI estimate stay accurate." },
+  { label: "Budget & Timeline", tip: "A realistic budget helps us recommend the right delivery plan." },
+  { label: "Package Selection", tip: "Pick the package that matches the speed and support you need." },
+  { label: "File Upload", tip: "Upload references early so design and delivery stay aligned." },
+  { label: "Meeting & Agreement", tip: "This confirms kickoff details and locks the next step." },
 ];
 
 const projectTypes: ClientIntakeForm["projectType"][] = ["Website", "App", "AI", "CRM", "Other"];
@@ -113,6 +119,52 @@ const defaultForm: ClientIntakeForm = {
   suggestionNotes: [],
 };
 
+const stepPurpose: Record<number, string> = {
+  1: "Helps us personalize your proposal with the right business context.",
+  2: "Defines core scope so we can generate an accurate execution plan.",
+  3: "Aligns delivery speed and investment with realistic milestones.",
+  4: "Matches your scope with the right delivery model and support level.",
+  5: "Reference files reduce rework and improve design-dev alignment.",
+  6: "Confirms kickoff details so we can generate your proposal instantly.",
+};
+
+const getProgressLabel = (currentStep: number, form: ClientIntakeForm) => {
+  if (currentStep === 1) return "Basic info completed";
+  if (currentStep === 2) return form.features.length ? "Requirements captured" : "Add at least one feature";
+  if (currentStep === 3) return form.budget && form.deadline ? "Budget and timeline set" : "Set budget and timeline";
+  if (currentStep === 4) return form.selectedPackage ? "Package selected" : "Choose a package";
+  if (currentStep === 5) return form.uploadedFiles.length ? "Files uploaded" : "Add reference files";
+  return form.meetingSlot && form.termsAccepted ? "Meeting and agreement ready" : "Finalize meeting and agreement";
+};
+
+const getProgressChecklist = (form: ClientIntakeForm) => [
+  { label: "Client Info", done: Boolean(form.businessName && form.contactName && form.email) },
+  { label: "Requirements", done: Boolean(form.projectType && form.ideaDescription && form.features.length) },
+  { label: "Budget", done: Boolean(form.budget && form.deadline) },
+  { label: "Files", done: Boolean(form.uploadedFiles.length) },
+  { label: "Meeting", done: Boolean(form.meetingSlot) },
+];
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
+const PHONE_REGEX = /^(?:\+?\d{1,3}[\s-]?)?\d{10}$/;
+const CONTACT_NAME_REGEX = /^[A-Za-z][A-Za-z\s.'-]{1,59}$/;
+const BUSINESS_NAME_REGEX = /^[A-Za-z0-9][A-Za-z0-9\s&.,'()/-]{1,79}$/;
+const COMPANY_SIZE_REGEX = /^(?:\d{1,6}(?:\s*-\s*\d{1,6})?|\d{1,6}\+|[A-Za-z][A-Za-z0-9\s&-]{1,40})$/;
+const TARGET_AUDIENCE_REGEX = /^(?=.*[A-Za-z])[A-Za-z0-9\s,&.'()/-]{3,120}$/;
+const OLLAMA_API_URL = import.meta.env.VITE_OLLAMA_URL || "http://localhost:11434";
+const OLLAMA_MODEL = import.meta.env.VITE_OLLAMA_MODEL || "mistral";
+
+type OllamaScopeAnalysis = {
+  completionScore: number;
+  insights: string[];
+  risks: string[];
+  recommendations: string[];
+};
+
+type OllamaGenerateResponse = {
+  response?: string;
+};
+
 const formatInr = (value: number) =>
   new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -137,15 +189,133 @@ const getDaysToDeadline = (deadline: string) => {
   return Math.max(0, Math.ceil((date - now) / (1000 * 60 * 60 * 24)));
 };
 
-const makeAiSummary = (form: ClientIntakeForm) => {
-  const urgency = form.priority === "urgent" ? "high urgency" : form.priority === "medium" ? "balanced urgency" : "flexible timeline";
-  return `${form.businessName} is planning a ${form.projectType} initiative for ${form.targetAudience || "their core audience"}. The project emphasizes ${form.features.join(", ") || "core platform capabilities"} with ${urgency}. Selected package is ${packageMatrix[form.selectedPackage].title}, target delivery ${form.deadline || "to be finalized"}, and estimated investment around ${formatInr(form.estimatedPrice)}.`;
+const isValidFutureDateTime = (value: string) => {
+  const parsed = new Date(value).getTime();
+  if (Number.isNaN(parsed)) return false;
+  return parsed > Date.now();
+};
+
+const runStrictOllamaPrompt = async (prompt: string, temperature = 0.5) => {
+  const response = await fetch(`${OLLAMA_API_URL}/api/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: OLLAMA_MODEL,
+      prompt,
+      stream: false,
+      temperature,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Ollama request failed with ${response.status}`);
+  }
+
+  const data = (await response.json()) as OllamaGenerateResponse;
+  if (!data.response?.trim()) {
+    throw new Error("Empty response from Ollama");
+  }
+
+  return data.response.trim();
+};
+
+const getStrictFeatureSuggestions = async (
+  projectType: string,
+  description: string,
+  currentFeatures: string[],
+) => {
+  const prompt = `You are a product strategy expert.
+Project type: ${projectType}
+Description: ${description || "No description yet"}
+Current selected features: ${currentFeatures.join(", ") || "None"}
+
+Return plain text only with this format:
+Reasoning: one short paragraph
+Suggestions:
+- item 1
+- item 2
+- item 3
+
+Rules:
+- Suggest 2 to 4 features not already selected
+- Keep suggestions practical for delivery
+- Do not use markdown tables or JSON`;
+
+  const raw = await runStrictOllamaPrompt(prompt, 0.6);
+  const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const reasoningLine = lines.find((line) => /^reasoning:/i.test(line)) ?? "";
+  const suggestionLines = lines.filter((line) => /^[-*]\s+/.test(line)).map((line) => line.replace(/^[-*]\s+/, "")).filter((item) => !currentFeatures.includes(item)).slice(0, 4);
+
+  return {
+    suggestions: suggestionLines,
+    reasoning: reasoningLine.replace(/^reasoning:\s*/i, ""),
+    raw,
+  };
+};
+
+const getStrictScopeAnalysis = async (
+  projectType: string,
+  features: string[],
+  budget: number,
+  deadline: string,
+  description: string,
+) => {
+  const daysToDeadline = deadline ? Math.ceil((new Date(deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : 0;
+  const prompt = `You are a project delivery analyst.
+Project type: ${projectType}
+Features: ${features.join(", ") || "None"}
+Budget INR: ${budget}
+Days to deadline: ${daysToDeadline}
+Description: ${description || "Not provided"}
+
+Return plain text only with this format:
+CompletionScore: number from 0 to 100
+Insights:
+- insight 1
+- insight 2
+Risks:
+- risk 1
+Recommendations:
+- recommendation 1
+
+Rules:
+- Keep it concise
+- Do not use JSON or markdown code fences`;
+
+  const raw = await runStrictOllamaPrompt(prompt, 0.5);
+  const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const scoreLine = lines.find((line) => /^completionscore:/i.test(line)) ?? "CompletionScore: 60";
+  const parsedScore = Number(scoreLine.replace(/^[^:]+:\s*/i, ""));
+  const insightStart = lines.findIndex((line) => /^insights:/i.test(line));
+  const riskStart = lines.findIndex((line) => /^risks:/i.test(line));
+  const recommendationStart = lines.findIndex((line) => /^recommendations:/i.test(line));
+
+  const sectionItems = (start: number, end: number) =>
+    lines
+      .slice(start + 1, end === -1 ? undefined : end)
+      .map((line) => line.replace(/^[-*]\s+/, ""))
+      .filter(Boolean)
+      .slice(0, 3);
+
+  return {
+    completionScore: Number.isFinite(parsedScore) ? Math.min(100, Math.max(0, parsedScore)) : 60,
+    insights: insightStart >= 0 ? sectionItems(insightStart, riskStart) : [],
+    risks: riskStart >= 0 ? sectionItems(riskStart, recommendationStart) : [],
+    recommendations: recommendationStart >= 0 ? sectionItems(recommendationStart, -1) : [],
+    raw,
+  };
+};
+
+const getStrictProjectSummary = async (form: ClientIntakeForm, dynamicPrice: number) => {
+  const prompt = `Write a concise executive summary (2 to 3 sentences).\nBusiness: ${form.businessName}\nProject Type: ${form.projectType}\nPackage: ${form.selectedPackage}\nBudget INR: ${form.budget}\nEstimated Cost INR: ${dynamicPrice}\nPriority: ${form.priority}\nTarget Audience: ${form.targetAudience}\nFeatures: ${form.features.join(", ") || "None"}\nDescription: ${form.ideaDescription}\n\nDo not use markdown or bullets.`;
+  return runStrictOllamaPrompt(prompt, 0.6);
 };
 
 export default function ClientIntake() {
   const { accessId = "" } = useParams();
   const location = useLocation();
   const [currentStep, setCurrentStep] = useState(1);
+  const [highestUnlockedStep, setHighestUnlockedStep] = useState(1);
   const [form, setForm] = useState<ClientIntakeForm>(defaultForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [dragActive, setDragActive] = useState(false);
@@ -157,6 +327,13 @@ export default function ClientIntake() {
   const [submitError, setSubmitError] = useState("");
   const [submitWarning, setSubmitWarning] = useState("");
   const [checkingLink, setCheckingLink] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"saving" | "saved">("saved");
+  const [ollamaAvailable, setOllamaAvailable] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
+  const [aiReasoning, setAiReasoning] = useState("");
+  const [aiAnalysis, setAiAnalysis] = useState<OllamaScopeAnalysis | null>(null);
+  const [aiPanelStatus, setAiPanelStatus] = useState("Checking Ollama connection...");
+  const [aiRawResponse, setAiRawResponse] = useState("");
 
   const tokenFromQuery = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -221,6 +398,16 @@ export default function ClientIntake() {
     }
   }, [accessId, lead]);
 
+  useEffect(() => {
+    const loadOllamaHealth = async () => {
+      const available = await checkOllamaHealth();
+      setOllamaAvailable(available);
+      setAiPanelStatus(available ? "Ollama connected" : "Ollama offline. Start Ollama to enable live AI insights.");
+    };
+
+    void loadOllamaHealth();
+  }, []);
+
   const dynamicPrice = useMemo(() => {
     const projectBase = {
       Website: 80000,
@@ -263,14 +450,82 @@ export default function ClientIntake() {
 
   useEffect(() => {
     if (!accessId) return;
-    const next = {
-      ...form,
+    setForm((prev) => ({
+      ...prev,
       estimatedPrice: dynamicPrice,
-      suggestionNotes: [],
+      suggestionNotes: aiSuggestions,
+    }));
+  }, [dynamicPrice, aiSuggestions, accessId]);
+
+  useEffect(() => {
+    if (!ollamaAvailable || !form.projectType) {
+      if (!ollamaAvailable) {
+        setAiSuggestions([]);
+        setAiReasoning("");
+      }
+      return;
+    }
+
+    let cancelled = false;
+    const timeout = window.setTimeout(async () => {
+      try {
+        setAiPanelStatus("Generating feature suggestions from Ollama...");
+        const result = await getStrictFeatureSuggestions(form.projectType, form.ideaDescription, form.features);
+        if (cancelled) return;
+        setAiSuggestions(result.suggestions);
+        setAiReasoning(result.reasoning);
+        setAiRawResponse(result.raw);
+        setAiPanelStatus("Ollama connected");
+      } catch {
+        if (cancelled) return;
+        setAiSuggestions([]);
+        setAiReasoning("");
+        setAiRawResponse("");
+        setAiPanelStatus("Ollama response not usable yet. Try a clearer project description.");
+      }
+    }, 600);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
     };
-    setForm(next);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dynamicPrice]);
+  }, [ollamaAvailable, form.projectType, form.ideaDescription, form.features]);
+
+  useEffect(() => {
+    if (!ollamaAvailable || !form.projectType || !form.features.length) {
+      if (!ollamaAvailable) {
+        setAiAnalysis(null);
+      }
+      return;
+    }
+
+    let cancelled = false;
+    const timeout = window.setTimeout(async () => {
+      try {
+        setAiPanelStatus("Analyzing project scope with Ollama...");
+        const result = await getStrictScopeAnalysis(
+          form.projectType,
+          form.features,
+          form.budget,
+          form.deadline,
+          form.ideaDescription,
+        );
+        if (cancelled) return;
+        setAiAnalysis(result);
+        setAiRawResponse(result.raw);
+        setAiPanelStatus("Ollama connected");
+      } catch {
+        if (cancelled) return;
+        setAiAnalysis(null);
+        setAiPanelStatus("Live AI analysis not usable yet. Add a few more project details.");
+      }
+    }, 800);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [ollamaAvailable, form.projectType, form.features, form.budget, form.deadline, form.ideaDescription]);
 
   useEffect(() => {
     if (!accessId || !access) return;
@@ -278,32 +533,14 @@ export default function ClientIntake() {
       const withPrice = { ...form, estimatedPrice: dynamicPrice };
       window.localStorage.setItem(`ai-project-os.client-intake-active-step.${accessId}`, String(currentStep));
       saveClientIntakeDraft(accessId, withPrice);
+      setSaveStatus("saved");
     }, 220);
 
     return () => window.clearTimeout(timeout);
   }, [accessId, access, form, dynamicPrice, currentStep]);
 
-  const smartSuggestions = useMemo(() => {
-    const notes: string[] = [];
-    if (form.projectType === "AI" && !form.features.includes("AI Assistant")) {
-      notes.push("AI projects typically benefit from an assistant or agent workflow. Consider enabling AI Assistant.");
-    }
-    if (form.features.includes("Payment") && form.features.includes("Login/Auth")) {
-      notes.push("You selected auth + payments. We recommend adding Analytics for conversion visibility.");
-    }
-    if (form.priority === "urgent" && getDaysToDeadline(form.deadline) > 35) {
-      notes.push("Priority is urgent but deadline looks flexible. Confirm if this should be marked medium.");
-    }
-    if (dynamicPrice > form.budget * 1.2) {
-      notes.push("Current scope exceeds initial budget target. Growth package optimization can reduce delivery cost.");
-    }
-    if (!notes.length) {
-      notes.push("Scope looks balanced. You are on track for a high-clarity proposal.");
-    }
-    return notes;
-  }, [form.projectType, form.features, form.priority, form.deadline, dynamicPrice, form.budget]);
-
   const setField = <K extends keyof ClientIntakeForm>(key: K, value: ClientIntakeForm[K]) => {
+    setSaveStatus("saving");
     setForm((prev) => ({ ...prev, [key]: value }));
     setErrors((prev) => {
       const next = { ...prev };
@@ -331,28 +568,65 @@ export default function ClientIntake() {
 
   const validateStep = (step: number) => {
     const nextErrors: Record<string, string> = {};
+    const businessName = form.businessName.trim();
+    const contactName = form.contactName.trim();
+    const email = form.email.trim();
+    const phone = form.phone.trim();
+    const companySize = form.companySize.trim();
+    const ideaDescription = form.ideaDescription.trim();
+    const targetAudience = form.targetAudience.trim();
 
     if (step === 1) {
-      if (!form.businessName.trim()) nextErrors.businessName = "Business name is required";
+      if (!businessName) nextErrors.businessName = "Business name is required";
+      else if (!BUSINESS_NAME_REGEX.test(businessName)) {
+        nextErrors.businessName = "Enter a valid business name (2-80 chars)";
+      }
+
       if (!form.industry.trim()) nextErrors.industry = "Select an industry";
-      if (!form.contactName.trim()) nextErrors.contactName = "Contact name is required";
-      if (!form.email.includes("@")) nextErrors.email = "Enter a valid email";
-      if (!form.phone.trim()) nextErrors.phone = "Phone is required";
-      if (!form.companySize.trim()) nextErrors.companySize = "Company size is required";
+
+      if (!contactName) nextErrors.contactName = "Contact name is required";
+      else if (!CONTACT_NAME_REGEX.test(contactName)) {
+        nextErrors.contactName = "Enter a valid contact name";
+      }
+
+      if (!email) nextErrors.email = "Email is required";
+      else if (!EMAIL_REGEX.test(email)) {
+        nextErrors.email = "Enter a valid email address";
+      }
+
+      if (!phone) nextErrors.phone = "Phone is required";
+      else if (!PHONE_REGEX.test(phone.replace(/[()]/g, ""))) {
+        nextErrors.phone = "Enter a valid phone number";
+      }
+
+      if (!companySize) nextErrors.companySize = "Company size is required";
+      else if (!COMPANY_SIZE_REGEX.test(companySize)) {
+        nextErrors.companySize = "Use format like 50-200, 200+, or Small team";
+      }
     }
 
     if (step === 2) {
       if (!form.projectType) nextErrors.projectType = "Project type is required";
       if (!form.features.length) nextErrors.features = "Select at least one feature";
-      if (!form.ideaDescription.trim()) nextErrors.ideaDescription = "Describe your idea";
-      if (!form.targetAudience.trim()) nextErrors.targetAudience = "Target audience is required";
+      if (!ideaDescription) nextErrors.ideaDescription = "Describe your idea";
+      else if (ideaDescription.length < 20) {
+        nextErrors.ideaDescription = "Idea description should be at least 20 characters";
+      }
+
+      if (!targetAudience) nextErrors.targetAudience = "Target audience is required";
+      else if (!TARGET_AUDIENCE_REGEX.test(targetAudience)) {
+        nextErrors.targetAudience = "Enter a valid target audience";
+      }
     }
 
     if (step === 3) {
-      if (!form.deadline || Number.isNaN(new Date(form.deadline).getTime())) {
-        nextErrors.deadline = "Select a valid deadline";
+      if (!form.deadline || !isValidFutureDateTime(form.deadline)) {
+        nextErrors.deadline = "Select a future deadline";
       }
       if (!form.priority) nextErrors.priority = "Select priority";
+      if (!Number.isFinite(form.budget) || form.budget < 1000) {
+        nextErrors.budget = "Budget should be at least INR 1,000";
+      }
     }
 
     if (step === 6) {
@@ -366,26 +640,42 @@ export default function ClientIntake() {
 
   const onNext = () => {
     if (!validateStep(currentStep)) return;
-    setCurrentStep((prev) => Math.min(6, prev + 1));
+    const nextStep = Math.min(6, currentStep + 1);
+    setCurrentStep(nextStep);
+    setHighestUnlockedStep((prev) => Math.max(prev, nextStep));
+    setSaveStatus("saving");
   };
 
   const onBack = () => {
-    setCurrentStep((prev) => Math.max(1, prev - 1));
+    setCurrentStep(Math.max(1, currentStep - 1));
+    setSaveStatus("saving");
   };
 
   const onSubmit = async () => {
     if (!validateStep(6) || !accessId) return;
+    if (!ollamaAvailable) {
+      setSubmitWarning("Ollama is offline right now. Submitting without a fresh AI summary.");
+    }
 
     setIsSubmitting(true);
     setSubmitError("");
     setSubmitWarning("");
-    const summary = makeAiSummary({ ...form, estimatedPrice: dynamicPrice });
+
+    let summary = aiRawResponse.trim();
+    try {
+      if (!summary) {
+        summary = await getStrictProjectSummary({ ...form, estimatedPrice: dynamicPrice }, dynamicPrice);
+      }
+    } catch {
+      summary = summary || `${form.businessName || "This project"} is a ${form.projectType} initiative for ${form.targetAudience || "the intended audience"}.`;
+      setSubmitWarning("AI summary could not be refreshed, so the latest available text was used.");
+    }
 
     try {
       await submitIntakeToBackend({
         ...form,
         estimatedPrice: dynamicPrice,
-        suggestionNotes: smartSuggestions,
+        suggestionNotes: aiSuggestions,
         token: intakeToken || undefined,
         leadId: linkRecord?.leadId || access?.leadId || accessId,
       });
@@ -396,7 +686,7 @@ export default function ClientIntake() {
     await new Promise((resolve) => window.setTimeout(resolve, 800));
 
     try {
-      submitClientIntake(accessId, { ...form, estimatedPrice: dynamicPrice, suggestionNotes: smartSuggestions }, summary);
+      submitClientIntake(accessId, { ...form, estimatedPrice: dynamicPrice, suggestionNotes: aiSuggestions }, summary);
       setAiSummary(summary);
       setIsSubmitting(false);
       setIsSubmitted(true);
@@ -542,6 +832,10 @@ export default function ClientIntake() {
   }
 
   const progressPercent = Math.round((currentStep / steps.length) * 100);
+  const currentStepMeta = stepInfo[currentStep - 1] ?? stepInfo[0];
+  const progressLabel = getProgressLabel(currentStep, form);
+  const progressChecklist = getProgressChecklist(form);
+  const savedLabel = saveStatus === "saving" ? "Saving..." : "Saved just now ✓";
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-[#030712] text-white">
@@ -561,10 +855,15 @@ export default function ClientIntake() {
               <p className="inline-flex items-center gap-2 rounded-full border border-cyan-200/20 bg-cyan-200/10 px-3 py-1 text-xs text-cyan-100">
                 <Sparkles className="h-3.5 w-3.5" /> Premium Client Link
               </p>
-              <h1 className="mt-5 text-4xl font-semibold leading-tight md:text-5xl">Let’s Build Something Exceptional</h1>
+              <h1 className="mt-5 text-4xl font-semibold leading-tight md:text-5xl">Tell us about your project - we'll build your plan instantly</h1>
               <p className="mt-4 max-w-2xl text-sm leading-7 text-white/70">
-                Share your goals once. We transform your vision into an execution-ready plan, timeline, and proposal with AI-assisted precision.
+                This intake is built to collect only what is required for an accurate proposal. Once submitted, we generate scope, timeline, and cost guidance instantly.
               </p>
+              <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-white/75">⏱ Takes 2-3 minutes</span>
+                <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-white/75">🔒 Your data is secure</span>
+                <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-white/75">🤖 AI-powered estimation</span>
+              </div>
               <div className="mt-6 flex flex-wrap items-center gap-3">
                 <Button onClick={() => setCurrentStep(1)} className="rounded-full bg-gradient-to-r from-sky-400 to-cyan-300 px-6 text-slate-950 hover:opacity-90">
                   Start Your Project <ArrowRight className="ml-2 h-4 w-4" />
@@ -584,9 +883,14 @@ export default function ClientIntake() {
         </motion.section>
 
         <div className="mt-7 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
-          <div className="mb-2 flex items-center justify-between text-xs text-white/60">
-            <span>Progress</span>
-            <span>{progressPercent}% complete</span>
+          <div className="mb-2 flex flex-col gap-1 text-xs text-white/70 md:flex-row md:items-center md:justify-between">
+            <span className="font-medium text-white">Step {currentStep} of {steps.length} — {currentStepMeta.label}</span>
+            <span>{savedLabel}</span>
+          </div>
+          <div className="flex flex-wrap gap-2 text-[11px] text-white/65">
+            <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1">⏱ Takes ~30 seconds</span>
+            <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1">🔒 Your data is secure</span>
+            <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1">💾 Auto-saved</span>
           </div>
           <div className="h-2 rounded-full bg-white/10">
             <motion.div
@@ -596,42 +900,75 @@ export default function ClientIntake() {
               transition={{ duration: 0.45 }}
             />
           </div>
+          <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3">
+            <p className="text-sm text-white/85">Progress: <span className="font-semibold text-white">{progressLabel}</span></p>
+            <div className="mt-2 flex flex-wrap gap-2 text-xs text-white/70">
+              {progressChecklist.map((item) => (
+                <span
+                  key={item.label}
+                  className={`rounded-full border px-3 py-1 ${item.done ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-100" : "border-white/15 bg-white/5 text-white/60"}`}
+                >
+                  {item.done ? "✔" : "⬜"} {item.label}
+                </span>
+              ))}
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-white/60">We use this information to generate your project plan and pricing.</p>
+          <p className="mt-2 rounded-lg border border-cyan-300/15 bg-cyan-300/8 px-3 py-2 text-xs text-cyan-100">Tip: {currentStepMeta.tip}</p>
           <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-6">
             {steps.map((label, index) => (
-              <button
-                key={label}
-                onClick={() => setCurrentStep(index + 1)}
-                className={`rounded-lg border px-2 py-1.5 text-xs transition ${
-                  currentStep === index + 1
-                    ? "border-cyan-200/60 bg-cyan-200/15 text-cyan-100"
-                    : "border-white/10 bg-white/5 text-white/60 hover:text-white"
-                }`}
-              >
-                {index + 1}. {label}
-              </button>
+              (() => {
+                const stepNumber = index + 1;
+                const isActive = currentStep === stepNumber;
+                const isLocked = stepNumber > highestUnlockedStep;
+
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    disabled={isLocked}
+                    title={isLocked ? "Complete the current step first" : `Go to ${label}`}
+                    onClick={() => {
+                      if (isLocked) return;
+                      setCurrentStep(stepNumber);
+                    }}
+                    className={`rounded-lg border px-2 py-1.5 text-xs transition ${
+                      isActive
+                        ? "border-cyan-200/60 bg-cyan-200/15 text-cyan-100"
+                        : "border-white/10 bg-white/5 text-white/60"
+                    } ${isLocked ? "cursor-not-allowed opacity-45" : "hover:text-white"}`}
+                  >
+                    {stepNumber}. {label}
+                  </button>
+                );
+              })()
             ))}
           </div>
         </div>
 
-        <div className="mt-7 grid gap-7 lg:grid-cols-[1.4fr_1fr]">
+        <div className="mt-7 grid gap-7 lg:grid-cols-[1.7fr_0.75fr]">
           <motion.section
             key={currentStep}
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur-2xl md:p-7"
+            className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-2xl md:p-8"
           >
+            <div className="mb-5 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-4">
+              <p className="text-sm font-semibold text-cyan-100">Step {currentStep}: {steps[currentStep - 1]}</p>
+              <p className="mt-1 text-sm text-white/75">{stepPurpose[currentStep]}</p>
+            </div>
             <AnimatePresence mode="wait">
               {currentStep === 1 ? (
                 <motion.div key="step1" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
                   <h2 className="text-2xl font-semibold">Step 1: Client Info</h2>
                   <div className="grid gap-3 md:grid-cols-2">
                     <div>
-                      <Input value={form.businessName} onChange={(e) => setField("businessName", e.target.value)} placeholder="Business Name" className="border-white/10 bg-black/20" />
+                      <Input value={form.businessName} onChange={(e) => setField("businessName", e.target.value)} placeholder="Business Name" className="h-11 border-white/10 bg-black/20" />
                       {errors.businessName ? <p className="mt-1 text-xs text-rose-300">{errors.businessName}</p> : null}
                     </div>
                     <div>
                       <Select value={form.industry} onValueChange={(value) => setField("industry", value)}>
-                        <SelectTrigger className="border-white/10 bg-black/20"><SelectValue placeholder="Industry" /></SelectTrigger>
+                        <SelectTrigger className="h-11 border-white/10 bg-black/20"><SelectValue placeholder="Industry" /></SelectTrigger>
                         <SelectContent>
                           {industries.map((industry) => <SelectItem key={industry} value={industry}>{industry}</SelectItem>)}
                         </SelectContent>
@@ -639,19 +976,19 @@ export default function ClientIntake() {
                       {errors.industry ? <p className="mt-1 text-xs text-rose-300">{errors.industry}</p> : null}
                     </div>
                     <div>
-                      <Input value={form.contactName} onChange={(e) => setField("contactName", e.target.value)} placeholder="Contact Name" className="border-white/10 bg-black/20" />
+                      <Input value={form.contactName} onChange={(e) => setField("contactName", e.target.value)} placeholder="Contact Name" className="h-11 border-white/10 bg-black/20" />
                       {errors.contactName ? <p className="mt-1 text-xs text-rose-300">{errors.contactName}</p> : null}
                     </div>
                     <div>
-                      <Input value={form.companySize} onChange={(e) => setField("companySize", e.target.value)} placeholder="Company Size (e.g. 50-200)" className="border-white/10 bg-black/20" />
+                      <Input value={form.companySize} onChange={(e) => setField("companySize", e.target.value)} placeholder="Company Size (e.g. 50-200)" className="h-11 border-white/10 bg-black/20" />
                       {errors.companySize ? <p className="mt-1 text-xs text-rose-300">{errors.companySize}</p> : null}
                     </div>
                     <div>
-                      <Input value={form.email} onChange={(e) => setField("email", e.target.value)} placeholder="Email" className="border-white/10 bg-black/20" />
+                      <Input value={form.email} onChange={(e) => setField("email", e.target.value)} placeholder="Email" className="h-11 border-white/10 bg-black/20" />
                       {errors.email ? <p className="mt-1 text-xs text-rose-300">{errors.email}</p> : null}
                     </div>
                     <div>
-                      <Input value={form.phone} onChange={(e) => setField("phone", e.target.value)} placeholder="Phone" className="border-white/10 bg-black/20" />
+                      <Input value={form.phone} onChange={(e) => setField("phone", e.target.value)} placeholder="Phone" className="h-11 border-white/10 bg-black/20" />
                       {errors.phone ? <p className="mt-1 text-xs text-rose-300">{errors.phone}</p> : null}
                     </div>
                   </div>
@@ -664,14 +1001,14 @@ export default function ClientIntake() {
                   <div className="grid gap-3 md:grid-cols-2">
                     <div>
                       <Select value={form.projectType} onValueChange={(value) => setField("projectType", value as ClientIntakeForm["projectType"])}>
-                        <SelectTrigger className="border-white/10 bg-black/20"><SelectValue placeholder="Project Type" /></SelectTrigger>
+                        <SelectTrigger className="h-11 border-white/10 bg-black/20"><SelectValue placeholder="Project Type" /></SelectTrigger>
                         <SelectContent>
                           {projectTypes.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
                     <div>
-                      <Input value={form.targetAudience} onChange={(e) => setField("targetAudience", e.target.value)} placeholder="Target Audience" className="border-white/10 bg-black/20" />
+                      <Input value={form.targetAudience} onChange={(e) => setField("targetAudience", e.target.value)} placeholder="Target Audience" className="h-11 border-white/10 bg-black/20" />
                       {errors.targetAudience ? <p className="mt-1 text-xs text-rose-300">{errors.targetAudience}</p> : null}
                     </div>
                   </div>
@@ -911,6 +1248,14 @@ export default function ClientIntake() {
                     {errors.termsAccepted ? <p className="mt-2 text-xs text-rose-300">{errors.termsAccepted}</p> : null}
                   </div>
 
+                  <div className="rounded-2xl border border-emerald-300/25 bg-emerald-300/10 p-4 text-sm text-white/85">
+                    <p className="font-semibold text-emerald-200">You will receive instantly:</p>
+                    <p className="mt-2">- Project plan</p>
+                    <p>- Cost estimate</p>
+                    <p>- Timeline</p>
+                    <p className="mt-3 text-xs text-white/70">Sent to your email immediately after submission.</p>
+                  </div>
+
                   <Button
                     onClick={onSubmit}
                     className="w-full rounded-xl bg-gradient-to-r from-cyan-300 to-sky-400 py-6 text-base font-semibold text-slate-950"
@@ -933,107 +1278,57 @@ export default function ClientIntake() {
             </div>
           </motion.section>
 
-          <section className="space-y-6">
+          <section className="space-y-6 lg:sticky lg:top-4 lg:self-start">
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur-2xl">
-              <h3 className="text-lg font-semibold flex items-center gap-2"><CircleDollarSign className="h-4 w-4 text-cyan-300" /> Dynamic Pricing Engine</h3>
-              <p className="mt-2 text-sm text-white/65">Interactive estimate updates live based on your scope, urgency, and package.</p>
+              <h3 className="text-lg font-semibold flex items-center gap-2"><CircleDollarSign className="h-4 w-4 text-cyan-300" /> AI Estimate</h3>
+              <p className="mt-2 text-sm text-white/65">Live pricing + reasoning based on project type, features, timeline, and urgency.</p>
               <motion.p key={dynamicPrice} initial={{ opacity: 0.3, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-4 text-3xl font-semibold text-cyan-200">
                 {formatInr(dynamicPrice)}
               </motion.p>
+              <div className="mt-4 space-y-2 rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-white/80">
+                <p>Project Type: <span className="text-white">{form.projectType}</span></p>
+                <p>Features: <span className="text-white">{form.features.length} selected</span></p>
+                <p>AI Status: <span className="text-white">{aiPanelStatus}</span></p>
+                <p>Brief Readiness: <span className="text-white">{aiAnalysis ? `${aiAnalysis.completionScore}%` : "Waiting for live analysis"}</span></p>
+              </div>
               <div className="mt-4 h-2 rounded-full bg-white/10">
                 <div className="h-full rounded-full bg-gradient-to-r from-cyan-300 to-emerald-300" style={{ width: `${Math.min(100, Math.round((dynamicPrice / 1000000) * 100))}%` }} />
               </div>
             </motion.div>
 
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 }} className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur-2xl">
-              <h3 className="text-lg font-semibold flex items-center gap-2"><WandSparkles className="h-4 w-4 text-cyan-300" /> Smart Suggestions</h3>
-              <div className="mt-3 space-y-2 text-sm text-white/70">
-                {smartSuggestions.map((note) => (
-                  <p key={note} className="rounded-xl border border-white/10 bg-black/20 p-3">{note}</p>
-                ))}
-              </div>
-            </motion.div>
-
-            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur-2xl">
-              <h3 className="text-lg font-semibold">Floating Smart Contact Hub</h3>
-              <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                <a href={`https://wa.me/?text=${encodeURIComponent(`Hi, I am filling intake for ${form.businessName || access.clientName}`)}`} target="_blank" rel="noreferrer" className="rounded-xl border border-emerald-300/30 bg-emerald-300/10 p-3 text-center text-sm text-emerald-100 hover:bg-emerald-300/20">
-                  <MessageCircle className="mx-auto mb-1 h-4 w-4" /> WhatsApp
-                </a>
-                <a href={`mailto:${access.email}`} className="rounded-xl border border-sky-300/30 bg-sky-300/10 p-3 text-center text-sm text-sky-100 hover:bg-sky-300/20">
-                  <Mail className="mx-auto mb-1 h-4 w-4" /> Email
-                </a>
-                <a href={`tel:${lead?.phone || "+91 00000 00000"}`} className="rounded-xl border border-violet-300/30 bg-violet-300/10 p-3 text-center text-sm text-violet-100 hover:bg-violet-300/20">
-                  <Phone className="mx-auto mb-1 h-4 w-4" /> Instant Call
-                </a>
-              </div>
+              <h3 className="text-lg font-semibold flex items-center gap-2"><WandSparkles className="h-4 w-4 text-cyan-300" /> AI Insight</h3>
+              {!ollamaAvailable ? (
+                <p className="mt-3 rounded-xl border border-amber-300/25 bg-amber-300/10 p-3 text-sm text-amber-100">
+                  Ollama is offline. Start Ollama to enable live AI insight.
+                </p>
+              ) : (
+                <>
+                  {aiRawResponse ? (
+                    <p className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-white/80 whitespace-pre-line">{aiRawResponse}</p>
+                  ) : null}
+                  <div className="mt-3 space-y-2 text-sm text-white/80">
+                    {aiAnalysis?.insights?.map((insight) => (
+                      <p key={`insight-${insight}`} className="rounded-xl border border-white/10 bg-black/20 p-3">{insight}</p>
+                    ))}
+                    {aiAnalysis?.recommendations?.map((recommendation) => (
+                      <p key={`recommendation-${recommendation}`} className="rounded-xl border border-cyan-300/20 bg-cyan-300/10 p-3">{recommendation}</p>
+                    ))}
+                    {aiAnalysis?.risks?.map((risk) => (
+                      <p key={`risk-${risk}`} className="rounded-xl border border-rose-300/20 bg-rose-300/10 p-3">Risk: {risk}</p>
+                    ))}
+                    {!aiAnalysis && !aiSuggestions.length ? (
+                      <p className="rounded-xl border border-white/10 bg-black/20 p-3 text-white/70">Fill project details to generate live AI insight.</p>
+                    ) : null}
+                    {aiSuggestions.map((suggestion) => (
+                      <p key={`suggestion-${suggestion}`} className="rounded-xl border border-emerald-300/20 bg-emerald-300/10 p-3">Suggested feature: {suggestion}</p>
+                    ))}
+                  </div>
+                </>
+              )}
             </motion.div>
           </section>
         </div>
-
-        <section className="mt-10 space-y-5 rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur-2xl md:p-7">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-semibold">Portfolio Showcase</h2>
-            <Button variant="outline" className="border-white/20 bg-transparent text-white hover:bg-white/10">View Case Study</Button>
-          </div>
-          <div className="overflow-x-auto pb-2">
-            <div className="flex min-w-max gap-4">
-              {[
-                { title: "Neo Commerce", metric: "+41% conversion", tag: "E-commerce" },
-                { title: "Pulse CRM", metric: "2.3x faster operations", tag: "CRM" },
-                { title: "Atlas AI", metric: "78% support automation", tag: "AI" },
-                { title: "FinEdge App", metric: "36% retention uplift", tag: "Mobile" },
-              ].map((item) => (
-                <motion.div key={item.title} whileHover={{ y: -6 }} className="w-[280px] rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <p className="text-xs text-cyan-200">{item.tag}</p>
-                  <h3 className="mt-1 text-lg font-semibold">{item.title}</h3>
-                  <p className="mt-2 text-sm text-white/70">{item.metric}</p>
-                  <p className="mt-5 text-xs text-white/50">View Case Study</p>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="mt-7 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-2xl">
-            <h2 className="text-xl font-semibold">What Clients Say</h2>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {[
-                "They transformed our rough brief into an enterprise-ready product plan in one week.",
-                "The intake and proposal process felt premium, transparent, and deeply strategic.",
-              ].map((quote, index) => (
-                <motion.div key={quote} initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.1 }} className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/75">
-                  <div className="mb-2 flex text-amber-300">{Array.from({ length: 5 }).map((_, i) => <Star key={i} className="h-3.5 w-3.5 fill-current" />)}</div>
-                  {quote}
-                </motion.div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-2xl">
-            <h2 className="text-xl font-semibold">Trust & Results</h2>
-            <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
-              {["Nova", "SplineX", "Orbit", "Bento", "Quark", "Moneta"].map((logo) => (
-                <div key={logo} className="rounded-lg border border-white/10 bg-black/20 px-2 py-2 text-white/70">{logo}</div>
-              ))}
-            </div>
-            <div className="mt-4 grid gap-2 sm:grid-cols-3">
-              <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-center">
-                <p className="text-lg font-semibold">120+</p>
-                <p className="text-[11px] text-white/60">Projects Delivered</p>
-              </div>
-              <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-center">
-                <p className="text-lg font-semibold">98%</p>
-                <p className="text-[11px] text-white/60">Client Satisfaction</p>
-              </div>
-              <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-center">
-                <p className="text-lg font-semibold">4.9/5</p>
-                <p className="text-[11px] text-white/60">Average Rating</p>
-              </div>
-            </div>
-          </div>
-        </section>
       </div>
 
       <div className="fixed bottom-4 right-4 hidden md:block">
