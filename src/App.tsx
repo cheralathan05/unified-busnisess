@@ -28,7 +28,7 @@ import NotFound from "./pages/NotFound";
 import LeadForm from "./pages/LeadForm";
 import ClientLogin from "./pages/ClientLogin";
 import ClientPortal from "./pages/ClientPortal";
-import ClientIntake from "./pages/ClientIntake";
+import ClientIntakePremium from "./pages/ClientIntakePremium";
 import ProposalView from "./pages/ProposalView";
 import { getAuthSession, getDefaultRouteForSession, type AuthRole } from "@/lib/auth-store";
 
@@ -89,7 +89,7 @@ function AnimatedRoutes() {
         <Route path="/forgot-password/otp" element={<ForgotPasswordOtp />} />
         <Route path="/forgot-password/new-password" element={<ResetPassword />} />
         <Route path="/client/login" element={<PublicAuthRedirect><ClientLogin /></PublicAuthRedirect>} />
-        <Route path="/client/intake/:accessId" element={<ClientIntake />} />
+        <Route path="/client/intake/:accessId" element={<ClientIntakePremium />} />
 
         <Route element={<RequireSession allowed={["admin", "employee"]} allowIncomplete />}>
           <Route path="/company-setup" element={<CompanySetup />} />

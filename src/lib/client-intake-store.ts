@@ -23,7 +23,10 @@ export type ClientIntakeForm = {
   phone: string;
   companySize: string;
   projectType: "Website" | "App" | "AI" | "CRM" | "Other";
+  goal: string;
   features: string[];
+  userRoles: string[];
+  modules: string[];
   ideaDescription: string;
   targetAudience: string;
   budget: number;
@@ -132,15 +135,24 @@ export const normalizeClientIntakeFiles = async (incoming: FileList | File[]) =>
 const buildLeadRequirements = (form: ClientIntakeForm): LeadRequirements => {
   const timelineSummary = form.deadline ? `Deadline ${new Date(form.deadline).toLocaleDateString()}` : "Timeline to be finalized";
   const prioritySummary = form.priority === "urgent" ? "Urgent" : form.priority === "medium" ? "Medium" : "Low";
+  const frontend = [
+    ...form.modules.filter((item) => ["Home", "Dashboard", "Profile", "Checkout", "Landing Page", "Settings"].includes(item)),
+    ...form.features.filter((item) => ["Dashboard", "Landing Page", "Mobile Responsive", "Admin Panel"].includes(item)),
+  ];
+  const backend = [
+    ...form.features.filter((item) => ["Login/Auth", "Payment", "API Integration", "CRM Modules"].includes(item)),
+    ...form.userRoles.filter((item) => ["Admin", "Staff", "Vendor"].includes(item)).map((role) => `${role} access control`),
+  ];
+  const integrations = form.features.filter((item) => ["AI Assistant", "Analytics", "Notifications", "Payment", "API Integration"].includes(item));
 
   return {
-    features: form.features,
+    features: [...form.features, ...form.modules, ...form.userRoles],
     budgetSummary: `${formatInr(form.budget)} to ${formatInr(form.estimatedPrice)}`,
     timelineSummary,
     prioritySummary,
-    frontend: form.features.filter((item) => ["Dashboard", "Landing Page", "Mobile Responsive", "Admin Panel"].includes(item)),
-    backend: form.features.filter((item) => ["Login/Auth", "Payment", "API Integration", "CRM Modules"].includes(item)),
-    integrations: form.features.filter((item) => ["AI Assistant", "Analytics", "Notifications", "Payment"].includes(item)),
+    frontend,
+    backend,
+    integrations,
   };
 };
 
@@ -151,6 +163,9 @@ const buildMeetingNotes = (form: ClientIntakeForm, aiSummary: string) => {
     `Project Type: ${form.projectType}`,
     `Target Audience: ${form.targetAudience}`,
     `Priority: ${form.priority}`,
+    `Goal: ${form.goal || "Not specified"}`,
+    `User Roles: ${form.userRoles.join(", ") || "Not specified"}`,
+    `Modules / Pages: ${form.modules.join(", ") || "Not specified"}`,
     `Budget: ${formatInr(form.budget)} base, estimated ${formatInr(form.estimatedPrice)}`,
     `Deadline: ${form.deadline || "Not provided"}`,
     `Package: ${form.selectedPackage}`,

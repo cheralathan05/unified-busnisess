@@ -32,7 +32,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   clearClientIntakeDraft,
   getClientIntakeDraft,
@@ -107,6 +106,10 @@ const meetingSlots = [
   "Fri 06:00 PM",
 ];
 
+const goalOptions = ["Increase sales", "Build SaaS", "Automate process", "Launch MVP", "Improve support"];
+const roleOptions = ["Admin", "Customer", "Vendor", "Staff"];
+const moduleSuggestions = ["Home", "Dashboard", "Profile", "Checkout", "Product Page", "Settings", "Reports", "Notifications"];
+
 const defaultForm: ClientIntakeForm = {
   businessName: "",
   industry: "",
@@ -115,7 +118,10 @@ const defaultForm: ClientIntakeForm = {
   phone: "",
   companySize: "",
   projectType: "Website",
+  goal: "",
   features: [],
+  userRoles: [],
+  modules: [],
   ideaDescription: "",
   targetAudience: "",
   budget: 100000,
@@ -160,6 +166,32 @@ const getDaysToDeadline = (deadline: string) => {
   return Math.max(0, Math.ceil((date - now) / (1000 * 60 * 60 * 24)));
 };
 
+const stepInfo = [
+  { label: "Client Information", tip: "Use your official business details for better proposal accuracy." },
+  { label: "Project Requirements", tip: "Be specific here so the proposal and AI estimate stay accurate." },
+  { label: "Budget & Timeline", tip: "A realistic budget helps us recommend the right delivery plan." },
+  { label: "Package Selection", tip: "Pick the package that matches the speed and support you need." },
+  { label: "File Upload", tip: "Upload references early so design and delivery stay aligned." },
+  { label: "Meeting & Agreement", tip: "This confirms kickoff details and locks the next step." },
+];
+
+const getProgressLabel = (currentStep: number, form: ClientIntakeForm) => {
+  if (currentStep === 1) return "Basic info completed";
+  if (currentStep === 2) return form.goal && form.features.length && form.userRoles.length ? "Requirements captured" : "Add goal, roles, and features";
+  if (currentStep === 3) return form.budget && form.deadline ? "Budget and timeline set" : "Set budget and timeline";
+  if (currentStep === 4) return form.selectedPackage ? "Package selected" : "Choose a package";
+  if (currentStep === 5) return form.uploadedFiles.length ? "Files uploaded" : "Add reference files";
+  return form.meetingSlot && form.termsAccepted ? "Meeting and agreement ready" : "Finalize meeting and agreement";
+};
+
+const getProgressChecklist = (form: ClientIntakeForm) => [
+  { label: "Client Info", done: Boolean(form.businessName && form.contactName && form.email) },
+  { label: "Requirements", done: Boolean(form.projectType && form.goal && form.ideaDescription && form.features.length && form.userRoles.length && form.modules.length) },
+  { label: "Budget", done: Boolean(form.budget && form.deadline) },
+  { label: "Files", done: Boolean(form.uploadedFiles.length) },
+  { label: "Meeting", done: Boolean(form.meetingSlot) },
+];
+
 const isValidFutureDateTime = (value: string) => {
   const parsed = new Date(value).getTime();
   if (Number.isNaN(parsed)) return false;
@@ -181,6 +213,7 @@ export default function ClientIntakePremium() {
   const [form, setForm] = useState<ClientIntakeForm>(defaultForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [dragActive, setDragActive] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"saving" | "saved">("saved");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [aiSummary, setAiSummary] = useState("");
@@ -216,8 +249,19 @@ export default function ClientIntakePremium() {
 
       setIsLoadingSuggestions(true);
       try {
-        const result = await suggestFeaturesForProject(form.projectType, form.ideaDescription, form.features);
-        setAiSuggestions(result.suggestions);
+        const result = await suggestFeaturesForProject(form.projectType, `${form.goal}. ${form.ideaDescription}`.trim(), form.features);
+        const roleBased = form.userRoles.includes("Admin")
+          ? ["Admin Panel"]
+          : form.userRoles.includes("Vendor")
+            ? ["Vendor Portal"]
+            : form.userRoles.includes("Customer")
+              ? ["Profile", "Notifications"]
+              : ["Reports"];
+        const moduleBased = form.modules.includes("Checkout") ? ["Payment", "Login/Auth"] : form.modules.includes("Dashboard") ? ["Analytics", "API Integration"] : [];
+        const merged = [...result.suggestions, ...roleBased, ...moduleBased].filter(
+          (item, index, arr) => !form.features.includes(item) && arr.indexOf(item) === index
+        );
+        setAiSuggestions(merged.slice(0, 5));
       } catch (error) {
         console.error("Error generating suggestions:", error);
       } finally {
@@ -227,7 +271,7 @@ export default function ClientIntakePremium() {
 
     const debounce = setTimeout(generateSuggestions, 500);
     return () => clearTimeout(debounce);
-  }, [form.projectType, form.ideaDescription]);
+  }, [form.projectType, form.goal, form.ideaDescription, form.features, form.userRoles, form.modules]);
 
   // Analyze project scope
   useEffect(() => {
@@ -310,38 +354,38 @@ export default function ClientIntakePremium() {
       const withPrice = { ...form, estimatedPrice: dynamicPrice };
       window.localStorage.setItem(`ai-project-os.client-intake-active-step.${accessId}`, String(currentStep));
       saveClientIntakeDraft(accessId, withPrice);
+      setSaveStatus("saved");
     }, 220);
 
     return () => window.clearTimeout(timeout);
   }, [accessId, form, dynamicPrice, currentStep]);
 
-  const smartSuggestions = useMemo(() => {
-    const notes: string[] = [];
-    if (form.projectType === "AI" && !form.features.includes("AI Assistant")) {
-      notes.push("🤖 AI projects typically benefit from an assistant or agent workflow.");
-    }
-    if (form.features.includes("Payment") && form.features.includes("Login/Auth")) {
-      notes.push("💳 Auth + payments combo? Add Analytics for conversion visibility.");
-    }
-    if (form.priority === "urgent" && getDaysToDeadline(form.deadline) > 35) {
-      notes.push("⏰ Priority is urgent but deadline is flexible. Should this be medium?");
-    }
-    if (dynamicPrice > form.budget * 1.2) {
-      notes.push("📊 Current scope exceeds budget. Growth package can optimize delivery cost.");
-    }
-    if (!notes.length) {
-      notes.push("✨ Scope looks balanced. You're on track for a high-clarity proposal.");
-    }
-    return notes;
-  }, [form.projectType, form.features, form.priority, form.deadline, dynamicPrice, form.budget]);
+  const currentStepMeta = stepInfo[currentStep - 1] ?? stepInfo[0];
+  const progressLabel = getProgressLabel(currentStep, form);
+  const progressChecklist = getProgressChecklist(form);
+  const savedLabel = saveStatus === "saving" ? "Saving..." : "Saved just now ✓";
+  const completedChecklistCount = progressChecklist.filter((item) => item.done).length;
+  const readinessPercent = Math.round((completedChecklistCount / progressChecklist.length) * 100);
+  const estimatedValueBand = formatInr(dynamicPrice).replace("₹", "INR ");
 
   const setField = <K extends keyof ClientIntakeForm>(key: K, value: ClientIntakeForm[K]) => {
+    setSaveStatus("saving");
     setForm((prev) => ({ ...prev, [key]: value }));
     setErrors((prev) => {
       const next = { ...prev };
       delete next[key as string];
       return next;
     });
+  };
+
+  const toggleRole = (role: string) => {
+    const next = form.userRoles.includes(role) ? form.userRoles.filter((item) => item !== role) : [...form.userRoles, role];
+    setField("userRoles", next);
+  };
+
+  const toggleModule = (moduleName: string) => {
+    const next = form.modules.includes(moduleName) ? form.modules.filter((item) => item !== moduleName) : [...form.modules, moduleName];
+    setField("modules", next);
   };
 
   const toggleFeature = (feature: string) => {
@@ -402,7 +446,10 @@ export default function ClientIntakePremium() {
 
     if (step === 2) {
       if (!form.projectType) nextErrors.projectType = "Project type is required";
+      if (!form.goal.trim()) nextErrors.goal = "Select a goal";
       if (!form.features.length) nextErrors.features = "Select at least one feature";
+      if (!form.userRoles.length) nextErrors.userRoles = "Select at least one user role";
+      if (!form.modules.length) nextErrors.modules = "Select at least one module or page";
       if (!ideaDescription) nextErrors.ideaDescription = "Describe your idea";
       else if (ideaDescription.length < 20) {
         nextErrors.ideaDescription = "Idea description should be at least 20 characters";
@@ -463,7 +510,7 @@ export default function ClientIntakePremium() {
 
     await new Promise((resolve) => window.setTimeout(resolve, 1300));
 
-    const submission = submitClientIntake(accessId, { ...form, estimatedPrice: dynamicPrice, suggestionNotes: smartSuggestions }, summary);
+    const submission = submitClientIntake(accessId, { ...form, estimatedPrice: dynamicPrice, suggestionNotes: aiSuggestions }, summary);
     setAiSummary(summary);
     setIsSubmitting(false);
     setIsSubmitted(true);
@@ -587,101 +634,60 @@ export default function ClientIntakePremium() {
       <div className="pointer-events-none absolute inset-0 opacity-40 [background:linear-gradient(to_right,rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:48px_48px]" />
 
       <div className="relative mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        {/* Hero Section */}
-        <motion.section
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-7 backdrop-blur-2xl md:p-10"
-        >
-          <div className="absolute -right-16 -top-16 h-52 w-52 rounded-full bg-cyan-300/10 blur-3xl" />
-          <div className="absolute -left-10 bottom-0 h-40 w-40 rounded-full bg-emerald-300/10 blur-3xl" />
-          <div className="relative grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <div className="mt-7 rounded-[1.75rem] border border-white/10 bg-white/[0.06] p-4 backdrop-blur-xl md:p-6">
+          <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
             <div>
-              <p className="inline-flex items-center gap-2 rounded-full border border-cyan-200/20 bg-cyan-200/10 px-3 py-1 text-xs text-cyan-100">
-                <Sparkles className="h-3.5 w-3.5" /> {ollamaAvailable ? "✨ AI-Powered Intake" : "Premium Client Link"}
-              </p>
-              <h1 className="mt-5 text-4xl font-semibold leading-tight md:text-5xl">Let's Build Something Exceptional</h1>
-              <p className="mt-4 max-w-2xl text-sm leading-7 text-white/70">
-                Share your goals once. We transform your vision into an execution-ready plan, timeline, and proposal with {ollamaAvailable ? "real Ollama AI" : "AI-assisted"} precision
-                .
-              </p>
-              <div className="mt-6 flex flex-wrap items-center gap-3">
-                <Button
-                  onClick={() => setCurrentStep(1)}
-                  className="rounded-full bg-gradient-to-r from-sky-400 to-cyan-300 px-6 text-slate-950 hover:opacity-90"
+              <div className="mb-2 flex flex-col gap-1 text-xs text-white/70 md:flex-row md:items-center md:justify-between">
+                <span className="font-medium text-white">Step {currentStep} of {steps.length} — {currentStepMeta.label}</span>
+                <span>{savedLabel}</span>
+              </div>
+              <p className="text-lg font-semibold text-white">{progressLabel}</p>
+              <p className="mt-2 text-sm text-white/60">{currentStepMeta.tip}</p>
+            </div>
+            <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4">
+              <div className="flex items-center justify-between text-xs text-white/60">
+                <span>Progress snapshot</span>
+                <span>{readinessPercent}% ready</span>
+              </div>
+              <div className="mt-3 h-2 rounded-full bg-white/10">
+                <motion.div
+                  className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-sky-400 to-emerald-300"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${progressPercent}%` }}
+                  transition={{ duration: 0.45 }}
+                />
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-white/65">
+                <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1">⏱ Takes ~30 seconds</span>
+                <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1">🔒 Your data is secure</span>
+                <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1">💾 Auto-saved</span>
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2 text-[11px] text-white/65">
+            <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1">⏱ Takes ~30 seconds</span>
+            <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1">🔒 Your data is secure</span>
+            <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1">💾 Auto-saved</span>
+          </div>
+          <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+            <div className="flex items-center justify-between text-xs text-white/55">
+              <span>Checklist</span>
+              <span>{completedChecklistCount}/{progressChecklist.length} complete</span>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs text-white/70">
+              {progressChecklist.map((item) => (
+                <span
+                  key={item.label}
+                  className={`rounded-full border px-3 py-1 ${item.done ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-100" : "border-white/15 bg-white/5 text-white/60"}`}
                 >
-                  Start Your Project <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-                {ollamaAvailable && (
-                  <p className="text-xs text-cyan-300 flex items-center gap-1">
-                    <span className="h-2 w-2 bg-cyan-300 rounded-full animate-pulse" /> Ollama AI Ready
-                  </p>
-                )}
-              </div>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
-              <p className="text-xs uppercase tracking-[0.2em] text-white/50">Live AI Scope Engine</p>
-              <div className="mt-4 space-y-3 text-sm text-white/75">
-                <div className="rounded-xl border border-white/10 bg-white/5 p-3 flex items-center justify-between">
-                  <span>Project Type:</span>
-                  <span className="text-white font-medium">{form.projectType}</span>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-white/5 p-3 flex items-center justify-between">
-                  <span>Selected Features:</span>
-                  <span className="text-white font-medium">{Math.max(form.features.length, 1)}</span>
-                </div>
-                <div className="rounded-xl border border-cyan-300/30 bg-cyan-300/10 p-3 flex items-center justify-between">
-                  <span>Dynamic Estimate:</span>
-                  <span className="text-cyan-200 font-semibold">{formatInr(dynamicPrice)}</span>
-                </div>
-              </div>
+                  {item.done ? "✔" : "⬜"} {item.label}
+                </span>
+              ))}
             </div>
           </div>
-        </motion.section>
+          <p className="mt-3 text-xs text-white/60">We use this information to generate your project plan and pricing.</p>
+          <p className="mt-2 rounded-lg border border-cyan-300/15 bg-cyan-300/8 px-3 py-2 text-xs text-cyan-100">Tip: {currentStepMeta.tip}</p>
 
-        {/* Progress Bar */}
-        <div className="mt-7 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
-          <div className="mb-2 flex items-center justify-between text-xs text-white/60">
-            <span>Progress</span>
-            <span>{progressPercent}% complete</span>
-          </div>
-          <div className="h-2 rounded-full bg-white/10">
-            <motion.div
-              className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-sky-400 to-emerald-300"
-              initial={{ width: 0 }}
-              animate={{ width: `${progressPercent}%` }}
-              transition={{ duration: 0.45 }}
-            />
-          </div>
-
-          <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-6">
-            {steps.map((label, index) => (
-              (() => {
-                const stepNumber = index + 1;
-                const isActive = currentStep === stepNumber;
-                const isLocked = stepNumber > highestUnlockedStep;
-
-                return (
-                  <button
-                    key={label}
-                    type="button"
-                    disabled={isLocked}
-                    onClick={() => {
-                      if (isLocked) return;
-                      setCurrentStep(stepNumber);
-                    }}
-                    className={`rounded-lg border px-2 py-1.5 text-xs transition ${
-                      isActive
-                        ? "border-cyan-200/60 bg-cyan-200/15 text-cyan-100"
-                        : "border-white/10 bg-white/5 text-white/60"
-                    } ${isLocked ? "cursor-not-allowed opacity-45" : "hover:text-white"}`}
-                  >
-                    {stepNumber}. {label}
-                  </button>
-                );
-              })()
-            ))}
-          </div>
         </div>
 
         {/* Main Content */}
@@ -793,6 +799,27 @@ export default function ClientIntakePremium() {
 
                   <div>
                     <p className="mb-2 text-sm text-white/70 flex items-center justify-between">
+                      <span>Goal</span>
+                    </p>
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {goalOptions.map((goal) => (
+                        <button
+                          key={goal}
+                          type="button"
+                          onClick={() => setField("goal", goal)}
+                          className={`rounded-xl border px-3 py-2 text-left text-sm transition ${
+                            form.goal === goal ? "border-cyan-300/60 bg-cyan-300/15 text-cyan-100" : "border-white/10 bg-black/20 text-white/70 hover:text-white"
+                          }`}
+                        >
+                          {goal}
+                        </button>
+                      ))}
+                    </div>
+                    {errors.goal && <p className="mt-1 text-xs text-rose-300">{errors.goal}</p>}
+                  </div>
+
+                  <div>
+                    <p className="mb-2 text-sm text-white/70 flex items-center justify-between">
                       <span>Features</span>
                       {isLoadingSuggestions && <span className="text-xs text-cyan-300 flex items-center gap-1"><Loader className="h-3 w-3 animate-spin" /> AI suggesting...</span>}
                     </p>
@@ -815,6 +842,48 @@ export default function ClientIntakePremium() {
                     {errors.features && <p className="mt-1 text-xs text-rose-300">{errors.features}</p>}
                   </div>
 
+                  <div>
+                    <p className="mb-2 text-sm text-white/70 flex items-center justify-between">
+                      <span>User Roles</span>
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {roleOptions.map((role) => (
+                        <button
+                          key={role}
+                          type="button"
+                          onClick={() => toggleRole(role)}
+                          className={`rounded-full border px-4 py-2 text-sm transition ${
+                            form.userRoles.includes(role) ? "border-cyan-300/60 bg-cyan-300/15 text-cyan-100" : "border-white/10 bg-black/20 text-white/70"
+                          }`}
+                        >
+                          {role}
+                        </button>
+                      ))}
+                    </div>
+                    {errors.userRoles && <p className="mt-1 text-xs text-rose-300">{errors.userRoles}</p>}
+                  </div>
+
+                  <div>
+                    <p className="mb-2 text-sm text-white/70 flex items-center justify-between">
+                      <span>Key Pages / Modules</span>
+                    </p>
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {moduleSuggestions.map((moduleName) => (
+                        <button
+                          key={moduleName}
+                          type="button"
+                          onClick={() => toggleModule(moduleName)}
+                          className={`rounded-xl border px-3 py-2 text-left text-sm transition ${
+                            form.modules.includes(moduleName) ? "border-cyan-300/60 bg-cyan-300/15 text-cyan-100" : "border-white/10 bg-black/20 text-white/70 hover:text-white"
+                          }`}
+                        >
+                          {moduleName}
+                        </button>
+                      ))}
+                    </div>
+                    {errors.modules && <p className="mt-1 text-xs text-rose-300">{errors.modules}</p>}
+                  </div>
+
                   {/* AI Suggestions */}
                   {aiSuggestions.length > 0 && (
                     <SmartSuggestions
@@ -832,7 +901,7 @@ export default function ClientIntakePremium() {
                     <Textarea
                       value={form.ideaDescription}
                       onChange={(e) => setField("ideaDescription", e.target.value)}
-                      placeholder="Describe your idea in detail..."
+                      placeholder="Describe your project in simple words:\n• What problem are you solving?\n• What should users do?\n• Any reference apps/websites?"
                       className="min-h-32 border-white/10 bg-black/20"
                     />
                     {errors.ideaDescription && <p className="mt-1 text-xs text-rose-300">{errors.ideaDescription}</p>}
@@ -1062,14 +1131,14 @@ export default function ClientIntakePremium() {
           </motion.section>
 
           {/* Sidebar */}
-          <section className="space-y-6">
+          <section className="space-y-6 lg:sticky lg:top-4 lg:self-start">
             {/* Dynamic Pricing */}
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur-2xl"
+              className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur-2xl shadow-[0_0_40px_rgba(56,189,248,0.06)]"
             >
-              <h3 className="text-lg font-semibold flex items-center gap-2">
+              <h3 className="flex items-center gap-2 text-lg font-semibold">
                 <CircleDollarSign className="h-4 w-4 text-cyan-300" /> Dynamic Engine
               </h3>
               <p className="mt-2 text-sm text-white/65">Estimate updates live as you customize your scope.</p>
@@ -1089,17 +1158,21 @@ export default function ClientIntakePremium() {
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.06 }}
-              className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur-2xl"
+              className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur-2xl shadow-[0_0_40px_rgba(20,184,166,0.06)]"
             >
-              <h3 className="text-lg font-semibold flex items-center gap-2">
+              <h3 className="flex items-center gap-2 text-lg font-semibold">
                 <WandSparkles className="h-4 w-4 text-cyan-300" /> Smart Insights
               </h3>
               <div className="mt-3 space-y-2 text-sm text-white/70">
-                {smartSuggestions.map((note) => (
+                {aiSuggestions.length > 0 ? aiSuggestions.map((note) => (
                   <p key={note} className="rounded-xl border border-white/10 bg-black/20 p-3">
                     {note}
                   </p>
-                ))}
+                )) : (
+                  <p className="rounded-xl border border-white/10 bg-black/20 p-3 text-white/55">
+                    Waiting for Ollama to generate suggestions from the live brief.
+                  </p>
+                )}
               </div>
             </motion.div>
 
@@ -1117,6 +1190,7 @@ export default function ClientIntakePremium() {
                   budget={form.budget}
                   deadline={form.deadline}
                   priority={form.priority}
+                  analysis={aiAnalysis}
                   isLoading={false}
                 />
               ) : (
@@ -1131,81 +1205,6 @@ export default function ClientIntakePremium() {
           </section>
         </div>
 
-        {/* Portfolio & Testimonials */}
-        <section className="mt-10 space-y-5 rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur-2xl md:p-7">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-semibold">Portfolio Showcase</h2>
-            <Button variant="outline" className="border-white/20 bg-transparent text-white hover:bg-white/10">
-              View Case Study
-            </Button>
-          </div>
-          <div className="overflow-x-auto pb-2">
-            <div className="flex min-w-max gap-4">
-              {[
-                { title: "Neo Commerce", metric: "+41% conversion", tag: "E-commerce" },
-                { title: "Pulse CRM", metric: "2.3x faster operations", tag: "CRM" },
-                { title: "Atlas AI", metric: "78% support automation", tag: "AI" },
-                { title: "FinEdge App", metric: "36% retention uplift", tag: "Mobile" },
-              ].map((item) => (
-                <motion.div key={item.title} whileHover={{ y: -6 }} className="w-[280px] rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <p className="text-xs text-cyan-200">{item.tag}</p>
-                  <h3 className="mt-1 text-lg font-semibold">{item.title}</h3>
-                  <p className="mt-2 text-sm text-white/70">{item.metric}</p>
-                  <p className="mt-5 text-xs text-white/50">View Case Study</p>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* Testimonials */}
-        <section className="mt-7 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-2xl">
-            <h2 className="text-xl font-semibold">What Clients Say</h2>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {[
-                "They transformed our rough brief into an enterprise-ready product plan in one week.",
-                "The intake and proposal process felt premium, transparent, and deeply strategic.",
-              ].map((quote, index) => (
-                <motion.div
-                  key={quote}
-                  initial={{ opacity: 0, y: 12 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                  className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/75"
-                >
-                  <div className="mb-2 flex text-amber-300">{Array.from({ length: 5 }).map((_, i) => <Star key={i} className="h-3.5 w-3.5 fill-current" />)}</div>
-                  {quote}
-                </motion.div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-2xl">
-            <h2 className="text-xl font-semibold">Trust & Results</h2>
-            <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
-              {["Nova", "SplineX", "Orbit", "Bento", "Quark", "Moneta"].map((logo) => (
-                <div key={logo} className="rounded-lg border border-white/10 bg-black/20 px-2 py-2 text-white/70">
-                  {logo}
-                </div>
-              ))}
-            </div>
-            <div className="mt-4 grid gap-2 sm:grid-cols-3">
-              <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-center">
-                <p className="text-lg font-semibold">120+</p>
-                <p className="text-[11px] text-white/60">Projects Delivered</p>
-              </div>
-              <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-center">
-                <p className="text-lg font-semibold">98%</p>
-                <p className="text-[11px] text-white/60">Client Satisfaction</p>
-              </div>
-              <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-center">
-                <p className="text-lg font-semibold">4.9/5</p>
-                <p className="text-[11px] text-white/60">Average Rating</p>
-              </div>
-            </div>
-          </div>
-        </section>
       </div>
     </div>
   );

@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, AlertCircle, CheckCircle2, Lightbulb, TrendingUp } from "lucide-react";
 
@@ -9,6 +8,7 @@ interface AIAnalysisProps {
   budget: number;
   deadline: string;
   priority: string;
+  analysis?: AnalysisData | null;
   isLoading?: boolean;
 }
 
@@ -30,56 +30,10 @@ export function AIAnalysisBox({
   budget,
   deadline,
   priority,
+  analysis,
   isLoading = false,
 }: AIAnalysisProps) {
-  const [analysis, setAnalysis] = useState<AnalysisData | null>(null);
-  const [streamingText, setStreamingText] = useState("");
-
-  useEffect(() => {
-    // Simulate AI analysis (in production, this calls analyzeProjectScope from ai-ollama-service)
-    const generateAnalysis = () => {
-      const score = Math.min(100, 40 + features.length * 8 + (description.length > 50 ? 15 : 0) + (deadline ? 20 : 0));
-
-      setAnalysis({
-        completionScore: score,
-        insights: [
-          features.length > 0
-            ? `Strong selection with ${features.length} features positioned for ${projectType} success`
-            : "Feature selection will refine the scope",
-          budget > 100000 ? "Budget tier supports premium implementation" : "Budget-conscious approach for MVP launch",
-          deadline ? `Timeline clarity reduces execution risk` : "Adding deadline will strengthen planning",
-        ],
-        risks: [
-          features.length > 6 ? "Large feature set may extend timeline" : undefined,
-          priority === "urgent" && !deadline ? "Urgent priority needs concrete deadline" : undefined,
-        ].filter(Boolean) as string[],
-        recommendations: [
-          "Schedule technical discovery call this week",
-          "Prepare wireframes for core user flows",
-          "Define success metrics before kickoff",
-        ],
-      });
-
-      // Simulate typing effect
-      const fullText = "Analyzing your project scope with AI...";
-      setStreamingText("");
-      let i = 0;
-      const interval = setInterval(() => {
-        if (i < fullText.length) {
-          setStreamingText(fullText.substring(0, i + 1));
-          i++;
-        } else {
-          clearInterval(interval);
-        }
-      }, 30);
-    };
-
-    if (projectType && (features.length > 0 || description)) {
-      generateAnalysis();
-    }
-  }, [projectType, features, description, budget, deadline, priority]);
-
-  if (!analysis) {
+  if (isLoading) {
     return (
       <motion.div
         initial={{ opacity: 0, y: 12 }}
@@ -89,8 +43,26 @@ export function AIAnalysisBox({
         <div className="flex items-start gap-3">
           <Sparkles className="h-5 w-5 text-cyan-300 mt-1 flex-shrink-0 animate-pulse" />
           <div className="flex-1">
-            <p className="text-sm text-white/80">AI Analysis initializing...</p>
-            <p className="text-xs text-white/50 mt-1">Provide more project details to unlock insights</p>
+            <p className="text-sm text-white/80">AI Analysis loading...</p>
+            <p className="text-xs text-white/50 mt-1">Waiting for the live Ollama response</p>
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
+
+  if (!analysis) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="rounded-2xl border border-white/10 bg-gradient-to-br from-cyan-500/10 to-blue-500/10 p-4"
+      >
+        <div className="flex items-start gap-3">
+          <Sparkles className="mt-1 h-5 w-5 flex-shrink-0 animate-pulse text-cyan-300" />
+          <div className="flex-1">
+            <p className="text-sm text-white/80">Add project details to unlock AI insights</p>
+            <p className="mt-1 text-xs text-white/50">The live Ollama analysis appears here once the model returns a result.</p>
           </div>
         </div>
       </motion.div>
