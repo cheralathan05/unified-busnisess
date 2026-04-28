@@ -803,21 +803,21 @@ router.post("/intake/submit", async (req: Request, res: Response) => {
         updated_at = EXCLUDED.updated_at
       WHERE requirements.locked = false
       `,
-      requirementId,
-      leadId,
-      ai.summary,
-      JSON.stringify(ai.features),
-      JSON.stringify(ai.modules),
-      JSON.stringify(ai.analysis),
-      now,
+        String(requirementId),
+        String(leadId),
+        String(ai.summary || ""),
+        JSON.stringify(ai.features || []),
+        JSON.stringify(ai.modules || []),
+        JSON.stringify(ai.analysis || {}),
+        now,
     );
 
     return res.status(201).json({
       success: true,
       data: {
-        leadId,
+          leadId: String(leadId),
         intakeId,
-        requirementId,
+          requirementId: String(requirementId),
         message: "Intake submission saved and requirements generated",
       },
     });
@@ -1039,10 +1039,55 @@ router.post("/requirements/:leadId/lock", authMiddleware, async (req: Request, r
     const actor = getRequestActor(req);
 
     const requirementRows = await db.$queryRawUnsafe<any[]>(`SELECT * FROM requirements WHERE lead_id = $1 LIMIT 1`, leadId);
-    const requirement = requirementRows[0];
+    let requirement = requirementRows[0];
 
     if (!requirement) {
-      return res.status(404).json({ success: false, error: "Requirement not found" });
+      // Attempt to synthesize a requirements record from an existing intake submission so lock can proceed
+      const intakeRowsForCreate = await db.$queryRawUnsafe<any[]>(`SELECT * FROM intake_submissions WHERE lead_id = $1 LIMIT 1`, leadId);
+      const intakeForCreate = intakeRowsForCreate[0];
+
+      if (intakeForCreate) {
+        const ai = buildRequirementAnalysis({
+          leadId,
+          businessName: intakeForCreate.business_name,
+          projectType: intakeForCreate.project_type,
+          features: normalizeArray(intakeForCreate.features, []),
+          ideaDescription: intakeForCreate.description,
+          budget: intakeForCreate.budget,
+          deadline: intakeForCreate.timeline,
+          selectedPackage: intakeForCreate.package,
+          uploadedFiles: normalizeArray(intakeForCreate.files, []),
+          meetingSlot: intakeForCreate.meeting_slot,
+          estimatedPrice: intakeForCreate.estimated_price,
+        });
+
+        const requirementId = `req-${leadId}`;
+        await db.$executeRawUnsafe(
+          `
+          INSERT INTO requirements (id, lead_id, summary, features, modules, analysis, status, version, updated_at)
+          VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, 'draft', 1, NOW())
+          ON CONFLICT (lead_id) DO NOTHING
+          `,
+          String(requirementId),
+          String(leadId),
+          String(ai.summary || ""),
+          JSON.stringify(ai.features || []),
+          JSON.stringify(ai.modules || []),
+          JSON.stringify(ai.analysis || {}),
+        );
+
+        // Re-query the requirement after insert
+        const newReqRows = await db.$queryRawUnsafe<any[]>(`SELECT * FROM requirements WHERE lead_id = $1 LIMIT 1`, leadId);
+        requirement = newReqRows[0];
+
+        if (!requirement) {
+          console.error("[LOCK:ERROR] Requirement still not found after creation attempt", { leadId, actor: actor.id });
+          return res.status(404).json({ success: false, error: "Requirement not found" });
+        }
+      } else {
+        console.error("[LOCK:ERROR] Requirement not found and no intake submission to generate from", { leadId, actor: actor.id });
+        return res.status(404).json({ success: false, error: "Requirement not found" });
+      }
     }
 
     if (Boolean(requirement.locked)) {
@@ -1131,8 +1176,8 @@ router.post("/requirements/:leadId/lock", authMiddleware, async (req: Request, r
       },
     });
   } catch (error) {
-    console.error("requirements lock error:", error);
-    return res.status(500).json({ success: false, error: "Failed to lock requirements" });
+        console.error("requirements lock error:", error);
+        return res.status(500).json({ success: false, error: "Failed to lock requirements" });
   }
 });
 
@@ -1149,6 +1194,7 @@ router.post("/requirements/:leadId/unlock", authMiddleware, async (req: Request,
     const requirement = requirementRows[0];
 
     if (!requirement) {
+      console.error("[LOCK:ERROR] Requirement not found", { leadId, actor: actor.id });
       return res.status(404).json({ success: false, error: "Requirement not found" });
     }
 

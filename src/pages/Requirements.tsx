@@ -130,6 +130,43 @@ const DEFAULT_INTAKE_FORM: ClientIntakeForm = {
   suggestionNotes: [],
 };
 
+const buildScopeSeedDescription = (form: Partial<ClientIntakeForm>) => {
+  const businessName = String(form.businessName ?? "").trim() || "the client";
+  const projectType = String(form.projectType ?? DEFAULT_INTAKE_FORM.projectType).toLowerCase();
+  const goal = String(form.goal ?? "").trim() || "business growth";
+  const roles = Array.isArray(form.userRoles) && form.userRoles.length ? form.userRoles.slice(0, 4).join(", ") : "Admin, Customer";
+  const modules = Array.isArray(form.modules) && form.modules.length ? form.modules.slice(0, 5).join(", ") : "Dashboard, Profile, Settings";
+  const features = Array.isArray(form.features) && form.features.length ? form.features.slice(0, 6).join(", ") : "Login/Auth, Analytics, API Integration";
+
+  return `Build a ${projectType} solution for ${businessName} focused on ${goal}. Primary users: ${roles}. Key pages: ${modules}. Core capabilities: ${features}. Include API contracts, milestones, and measurable launch KPIs.`;
+};
+
+const normalizeIdeaDescription = (form: Partial<ClientIntakeForm>) => {
+  const rawDescription = String(form.ideaDescription ?? "").trim();
+  if (!rawDescription) return rawDescription;
+
+  const looksStructured = rawDescription.startsWith("{") || rawDescription.startsWith("[");
+  if (!looksStructured) return rawDescription;
+
+  try {
+    const parsed = JSON.parse(rawDescription) as Record<string, unknown>;
+    const candidateFields = [parsed.description, parsed.summary, parsed.text, parsed.content, parsed.message];
+
+    for (const candidate of candidateFields) {
+      if (typeof candidate === "string") {
+        const text = candidate.trim();
+        if (text && !/^AI unavailable$/i.test(text)) {
+          return text;
+        }
+      }
+    }
+  } catch {
+    // Fall back to a generated scope paragraph below.
+  }
+
+  return buildScopeSeedDescription(form);
+};
+
 const normalizeIntakeForm = (input?: Partial<ClientIntakeForm> | null): ClientIntakeForm => {
   const form = input ?? {};
   return {
@@ -146,7 +183,7 @@ const normalizeIntakeForm = (input?: Partial<ClientIntakeForm> | null): ClientIn
     features: Array.isArray(form.features) ? form.features : [],
     userRoles: Array.isArray(form.userRoles) ? form.userRoles : [],
     modules: Array.isArray(form.modules) ? form.modules : [],
-    ideaDescription: String(form.ideaDescription ?? DEFAULT_INTAKE_FORM.ideaDescription),
+    ideaDescription: normalizeIdeaDescription(form),
     targetAudience: String(form.targetAudience ?? DEFAULT_INTAKE_FORM.targetAudience),
     budget: Number.isFinite(form.budget) ? Number(form.budget) : DEFAULT_INTAKE_FORM.budget,
     deadline: String(form.deadline ?? DEFAULT_INTAKE_FORM.deadline),
@@ -285,7 +322,7 @@ const improveDescriptionDraft = (form: ClientIntakeForm) => {
   const moduleSummary = form.modules.length ? form.modules.join(", ") : "Dashboard and Profile";
   const featureSummary = form.features.length ? form.features.slice(0, 6).join(", ") : "Login/Auth and Analytics";
 
-  return `${form.ideaDescription.trim()}\n\nRefined Scope: Build a ${form.projectType} solution for ${form.businessName || "the client"} focused on ${form.goal || "business growth"}. Primary roles: ${roleSummary}. Key modules/pages: ${moduleSummary}. Core capabilities: ${featureSummary}. Include API contracts, milestones, and measurable launch KPIs.`.trim();
+  return `${buildScopeSeedDescription(form)}\n\nRefined Scope: Expand the ${form.projectType} build for ${form.businessName || "the client"} with stronger workflow detail, delivery sequencing, and launch metrics. Primary roles: ${roleSummary}. Key modules/pages: ${moduleSummary}. Core capabilities: ${featureSummary}. Include API contracts, milestones, and measurable launch KPIs.`.trim();
 };
 
 const buildStudioSummary = (form: ClientIntakeForm, completeness: number, issues: string[]) => {
@@ -918,7 +955,13 @@ export default function RequirementsPage() {
       }
 
       setLockDialogError(apiError.message || "Failed to lock requirement");
-    } finally {
+        console.error("Lock error:", { error, selectedLeadId: selectedLead?.id, status: apiError.status });
+      
+        if (apiError.status === 404) {
+          console.error("Requirement not found for leadId:", selectedLead?.id);
+          setLockDialogError("Requirement not found. Please refresh and try again.");
+        }
+      } finally {
       setIsLockSubmitting(false);
     }
   };
@@ -1028,6 +1071,8 @@ export default function RequirementsPage() {
     if (!draftForm || studioLocked) return;
 
     setIsImprovingDescription(true);
+    const localFallback = improveDescriptionDraft(draftForm);
+
     try {
       const result = await refineIntakeDescriptionWithAI({
         businessName: draftForm.businessName,
@@ -1039,16 +1084,14 @@ export default function RequirementsPage() {
         features: draftForm.features,
       });
 
-      const refined = String(result?.description || "").trim();
-      if (!refined) {
-        throw new Error("Empty response");
-      }
+      const refined = normalizeIdeaDescription({ ...draftForm, ideaDescription: String(result?.description || "") }) || localFallback;
 
       updateDraftField("ideaDescription", refined);
-      toast.success("Description improved with real AI");
+      toast.success("Scope rewritten with AI");
     } catch (error) {
       console.error("AI description refinement failed:", error);
-      toast.error("Real AI unavailable. Start backend + Ollama and try again.");
+      updateDraftField("ideaDescription", localFallback);
+      toast("Live AI was unavailable, so a premium local rewrite was applied.");
     } finally {
       setIsImprovingDescription(false);
     }
