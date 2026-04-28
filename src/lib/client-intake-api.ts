@@ -5,11 +5,13 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 class ClientIntakeApiError extends Error {
   status: number;
+  details?: unknown;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, details?: unknown) {
     super(message);
     this.name = "ClientIntakeApiError";
     this.status = status;
+    this.details = details;
   }
 }
 
@@ -97,6 +99,21 @@ export type RequirementBundle = {
     version: number;
     updatedAt: string;
     items: Array<{ label: string; bucket: string; text: string }>;
+    lock: {
+      locked: boolean;
+      lockedAt: string | null;
+      lockedBy: string | null;
+      lockedByRole: string | null;
+      lockedVersion: number;
+      lockPasswordSet: boolean;
+      lockScore: number;
+      lockMissing: string[];
+      readyToLock: boolean;
+      completionPercent: number;
+      unlockFailedAttempts: number;
+      unlockBlockedUntil: string | null;
+      meetingPresent: boolean;
+    };
   } | null;
   meeting: {
     id: string;
@@ -150,7 +167,7 @@ async function request<T>(path: string, init: RequestInit = {}, authenticated = 
   const payload = text ? JSON.parse(text) : {};
 
   if (!response.ok) {
-    throw new ClientIntakeApiError(payload?.error ?? payload?.message ?? "Request failed.", response.status);
+    throw new ClientIntakeApiError(payload?.error ?? payload?.message ?? "Request failed.", response.status, payload?.data ?? payload);
   }
 
   return unwrapResponse<T>(payload);
@@ -218,6 +235,25 @@ export const submitIntakeToBackend = async (payload: ClientIntakeForm & { token?
   );
 };
 
+export const refineIntakeDescriptionWithAI = async (payload: {
+  businessName?: string;
+  projectType?: string;
+  goal?: string;
+  description: string;
+  userRoles?: string[];
+  modules?: string[];
+  features?: string[];
+}) => {
+  return request<{ description: string; provider?: string; model?: string }>(
+    "/intake/ai/refine-description",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+    false,
+  );
+};
+
 export const sendClientLink = async (payload: ClientLinkPayload) => {
   return request<ClientLinkResponse>(
     "/client-link/send",
@@ -258,11 +294,23 @@ export const regenerateLeadRequirements = async (leadId: string | number) => {
   );
 };
 
-export const lockLeadRequirements = async (leadId: string | number) => {
-  return request<{ leadId: string; locked: boolean }>(
+export const lockLeadRequirements = async (leadId: string | number, payload: { password: string; confirmPassword: string; override?: boolean }) => {
+  return request<{ leadId: string; locked: boolean; lockScore?: number; missing?: string[]; lockedAt?: string; lockedVersion?: number }>(
     `/requirements/${encodeURIComponent(String(leadId))}/lock`,
     {
       method: "POST",
+      body: JSON.stringify(payload),
+    },
+    true,
+  );
+};
+
+export const unlockLeadRequirements = async (leadId: string | number, payload: { password?: string; override?: boolean }) => {
+  return request<{ leadId: string; locked: boolean; unlockedAt?: string }>(
+    `/requirements/${encodeURIComponent(String(leadId))}/unlock`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
     },
     true,
   );

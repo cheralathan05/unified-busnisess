@@ -12,11 +12,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import {
   ArrowRight,
   CheckCircle2,
-  CircleDollarSign,
   FileUp,
   Mail,
   MessageCircle,
@@ -42,6 +41,7 @@ import {
   type IntakePackage,
   type IntakePriority,
 } from "@/lib/client-intake-store";
+import { submitIntakeToBackend } from "@/lib/client-intake-api";
 import { AIAnalysisBox, SmartSuggestions, CompletionMeter } from "@/components/AIAnalysisBox";
 import { FloatingContactHub } from "@/components/FloatingContactHub";
 import {
@@ -207,6 +207,12 @@ const makeAiSummary = (form: ClientIntakeForm) => {
 export default function ClientIntakePremium() {
   const { accessId = "" } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const intakeToken = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("token")?.trim() || "";
+  }, [location.search]);
 
   const [currentStep, setCurrentStep] = useState(1);
   const [highestUnlockedStep, setHighestUnlockedStep] = useState(1);
@@ -217,6 +223,8 @@ export default function ClientIntakePremium() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [aiSummary, setAiSummary] = useState("");
+  const [liveAiSummary, setLiveAiSummary] = useState("");
+  const [liveAiStatus, setLiveAiStatus] = useState("Add project details to unlock a live AI answer.");
   const [ollamaAvailable, setOllamaAvailable] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
@@ -295,6 +303,67 @@ export default function ClientIntakePremium() {
     const debounce = setTimeout(analyzeScope, 800);
     return () => clearTimeout(debounce);
   }, [form.projectType, form.features, form.budget, form.deadline, form.ideaDescription]);
+
+  // Generate a live AI summary with an instant local preview, then refine with Ollama
+  useEffect(() => {
+    const businessName = form.businessName.trim();
+    const ideaDescription = form.ideaDescription.trim();
+    const hasEnoughContext = Boolean(businessName && form.projectType && ideaDescription.length >= 12);
+
+    if (!hasEnoughContext) {
+      setLiveAiSummary("");
+      setLiveAiStatus("Add your business name, project type, and a short brief to generate the AI answer.");
+      return;
+    }
+
+    setLiveAiSummary(makeAiSummary(form));
+
+    let cancelled = false;
+
+    const generateLiveSummary = async () => {
+      setLiveAiStatus(ollamaAvailable ? "Updating AI answer..." : "Updating a smart summary while Ollama is offline.");
+
+      try {
+        const summary = await generateProjectSummary(
+          form.businessName,
+          form.projectType,
+          form.features,
+          form.targetAudience,
+          form.budget,
+          form.selectedPackage,
+          form.priority,
+          form.ideaDescription
+        );
+
+        if (cancelled) return;
+
+        setLiveAiSummary(summary);
+        setLiveAiStatus(ollamaAvailable ? "Live AI answer updated." : "Smart summary updated from your inputs.");
+      } catch (error) {
+        if (cancelled) return;
+
+        console.error("Error generating live AI summary:", error);
+        setLiveAiSummary(makeAiSummary(form));
+        setLiveAiStatus("Smart summary updated from your inputs.");
+      }
+    };
+
+    const debounce = window.setTimeout(generateLiveSummary, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(debounce);
+    };
+  }, [
+    ollamaAvailable,
+    form.businessName,
+    form.projectType,
+    form.features,
+    form.targetAudience,
+    form.budget,
+    form.selectedPackage,
+    form.priority,
+    form.ideaDescription,
+  ]);
 
   const dynamicPrice = useMemo(() => {
     const projectBase = {
@@ -510,7 +579,19 @@ export default function ClientIntakePremium() {
 
     await new Promise((resolve) => window.setTimeout(resolve, 1300));
 
-    const submission = submitClientIntake(accessId, { ...form, estimatedPrice: dynamicPrice, suggestionNotes: aiSuggestions }, summary);
+    const submissionPayload = { ...form, estimatedPrice: dynamicPrice, suggestionNotes: aiSuggestions };
+    const submission = submitClientIntake(accessId, submissionPayload, summary);
+
+    // Public backend sync ensures Requirements page can load this intake across sessions/browsers.
+    try {
+      await submitIntakeToBackend({
+        ...submissionPayload,
+        ...(intakeToken ? { token: intakeToken } : { leadId: accessId }),
+      });
+    } catch (error) {
+      console.warn("Backend intake sync failed; submission remains in local store:", error);
+    }
+
     setAiSummary(summary);
     setIsSubmitting(false);
     setIsSubmitted(true);
@@ -1132,24 +1213,33 @@ export default function ClientIntakePremium() {
 
           {/* Sidebar */}
           <section className="space-y-6 lg:sticky lg:top-4 lg:self-start">
-            {/* Dynamic Pricing */}
+            {/* Live AI answer */}
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur-2xl shadow-[0_0_40px_rgba(56,189,248,0.06)]"
             >
               <h3 className="flex items-center gap-2 text-lg font-semibold">
-                <CircleDollarSign className="h-4 w-4 text-cyan-300" /> Dynamic Engine
+                <WandSparkles className="h-4 w-4 text-cyan-300" /> AI Answer
               </h3>
-              <p className="mt-2 text-sm text-white/65">Estimate updates live as you customize your scope.</p>
-              <motion.p key={dynamicPrice} initial={{ opacity: 0.3, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-4 text-3xl font-semibold text-cyan-200">
-                {formatInr(dynamicPrice)}
-              </motion.p>
-              <div className="mt-4 h-2 rounded-full bg-white/10">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-cyan-300 to-emerald-300"
-                  style={{ width: `${Math.min(100, Math.round((dynamicPrice / 1000000) * 100))}%` }}
-                />
+              <p className="mt-2 text-sm text-white/65">Real AI response updates as you enter project details.</p>
+              <p className="mt-3 text-xs text-cyan-200/90">{liveAiStatus}</p>
+              <motion.div
+                key={liveAiSummary || liveAiStatus}
+                initial={{ opacity: 0.3, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4"
+              >
+                {liveAiSummary ? (
+                  <p className="text-sm leading-7 text-white/80">{liveAiSummary}</p>
+                ) : (
+                  <p className="text-sm leading-7 text-white/55">Fill in the brief to get a real AI answer with scope, direction, and next-step guidance.</p>
+                )}
+              </motion.div>
+              <div className="mt-4 flex flex-wrap gap-2 text-[11px] text-white/65">
+                <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1">Live Ollama prompt</span>
+                <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1">Auto-updates on input</span>
+                <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1">No manual refresh needed</span>
               </div>
             </motion.div>
 
@@ -1163,16 +1253,16 @@ export default function ClientIntakePremium() {
               <h3 className="flex items-center gap-2 text-lg font-semibold">
                 <WandSparkles className="h-4 w-4 text-cyan-300" /> Smart Insights
               </h3>
-              <div className="mt-3 space-y-2 text-sm text-white/70">
-                {aiSuggestions.length > 0 ? aiSuggestions.map((note) => (
-                  <p key={note} className="rounded-xl border border-white/10 bg-black/20 p-3">
-                    {note}
-                  </p>
-                )) : (
-                  <p className="rounded-xl border border-white/10 bg-black/20 p-3 text-white/55">
-                    Waiting for Ollama to generate suggestions from the live brief.
-                  </p>
-                )}
+              <div className="mt-3">
+                <SmartSuggestions
+                  suggestions={aiSuggestions}
+                  onAddFeature={(feature) => {
+                    if (!form.features.includes(feature)) {
+                      toggleFeature(feature);
+                    }
+                  }}
+                  isLoading={isLoadingSuggestions}
+                />
               </div>
             </motion.div>
 

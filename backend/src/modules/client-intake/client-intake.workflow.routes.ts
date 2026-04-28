@@ -1,11 +1,17 @@
+import bcrypt from "bcrypt";
 import { randomBytes } from "crypto";
 import { Router, Request, Response } from "express";
 import { db } from "../../config/db";
 import { authMiddleware } from "../../middleware/auth.middleware";
 import { EmailService } from "../communication/email.service";
+import { logAudit } from "../audit/audit.service";
+import { getAIProvider } from "../ai/ai.provider";
 
 const router = Router();
 const emailService = new EmailService();
+const LOCK_PASSWORD_LENGTH = 4;
+const MAX_UNLOCK_ATTEMPTS = 3;
+const UNLOCK_BLOCK_MINUTES = 5;
 
 let tablesEnsured = false;
 
@@ -65,6 +71,59 @@ function computeCompletion(intake: IntakePayload, hasMeeting: boolean) {
   };
 }
 
+function safeJsonParse<T>(raw: string, fallback: T): T {
+  try {
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) return fallback;
+    const parsed = JSON.parse(match[0]) as T;
+    return parsed;
+  } catch {
+    return fallback;
+  }
+}
+
+function fallbackSuggestions(projectType: string, currentFeatures: string[]) {
+  const suggestions: Record<string, string[]> = {
+    Website: ["Dashboard", "Admin Panel", "Analytics", "API Integration"],
+    App: ["Login/Auth", "Mobile Responsive", "Notifications", "Analytics"],
+    AI: ["AI Assistant", "API Integration", "Dashboard", "Analytics"],
+    CRM: ["Login/Auth", "Dashboard", "Admin Panel", "API Integration"],
+    Other: ["Login/Auth", "Dashboard", "Analytics", "Mobile Responsive"],
+  };
+
+  const recommended = (suggestions[projectType] || suggestions.Other)
+    .filter((item) => !currentFeatures.includes(item))
+    .slice(0, 4);
+
+  return {
+    suggestions: recommended,
+    reasoning: `Suggested based on ${projectType} scope and selected features.`,
+  };
+}
+
+function fallbackAnalysis(projectType: string, featureCount: number, budget: number, daysToDeadline: number) {
+  let score = 50;
+  if (featureCount > 0) score += 15;
+  if (budget > 100000) score += 15;
+  if (daysToDeadline > 30) score += 10;
+
+  return {
+    completionScore: Math.min(100, score),
+    insights: [
+      `Good foundation for a ${projectType} project`,
+      "Scope and delivery context captured",
+      featureCount > 0 ? "Feature selection is clear" : "Add more features for precision",
+    ],
+    risks: daysToDeadline < 21 ? ["Tight timeline may require phased delivery"] : ["Standard delivery risks apply"],
+    recommendations: ["Run discovery with stakeholders", "Freeze scope before build start"],
+  };
+}
+
+function fallbackSummary(businessName: string, projectType: string, features: string[]) {
+  const preview = features.length > 0 ? ` featuring ${features.slice(0, 3).join(", ")}` : "";
+  return `${businessName} is planning a ${projectType} product${preview} to accelerate business growth and user outcomes. The initiative is positioned as a high-impact delivery with clear execution priorities.`;
+}
+
 function buildRequirementAnalysis(intake: IntakePayload) {
   const features = normalizeArray(intake.features, []);
   const summary = `${toSafeString(intake.businessName, "Client")} needs a ${toSafeString(intake.projectType, "digital")} solution focused on ${
@@ -109,6 +168,85 @@ function buildRequirementAnalysis(intake: IntakePayload) {
     modules,
     analysis,
     items: structuredItems,
+  };
+}
+
+function isAdminRole(role: unknown) {
+  return String(role || "").toLowerCase() === "admin";
+}
+
+function getRequestActor(req: Request) {
+  const user = (req as any).user || {};
+  return {
+    id: toSafeString(user.id, "system") || "system",
+    role: String(user.role || "USER"),
+    email: toSafeString(user.email, ""),
+    isAdmin: isAdminRole(user.role),
+  };
+}
+
+function toJsonArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function normalizeLockIssues(intake: any, requirement: any) {
+  const features = normalizeArray<string>(intake?.features, []);
+  const modules = normalizeArray<string>(requirement?.modules, []);
+  const summary = toSafeString(requirement?.summary, "").toLowerCase();
+  const analysisText = JSON.stringify(requirement?.analysis || {}).toLowerCase();
+  const scopeText = `${features.join(" ")} ${modules.join(" ")} ${summary} ${analysisText}`;
+
+  const missing: string[] = [];
+  const completion = computeCompletion(intake || {}, Boolean(intake?.meeting_slot));
+
+  if (!completion.checks.clientInfo) missing.push("Client contact details");
+  if (!completion.checks.requirements) missing.push("Requirements scope");
+  if (!completion.checks.budget) missing.push("Budget details");
+  if (!completion.checks.files) missing.push("Uploaded assets");
+  if (!completion.checks.meeting) missing.push("Meeting context");
+  if (!/api|integration|webhook|payment/.test(scopeText)) missing.push("API details");
+  if (!modules.length) missing.push("Modules and user flow");
+
+  const normalizedMissing = Array.from(new Set(missing));
+  const lockScore = Math.max(
+    0,
+    Math.min(
+      100,
+      Math.round(
+        completion.percent +
+          (features.length ? 8 : 0) +
+          (modules.length ? 8 : 0) +
+          (/api|integration|webhook|payment/.test(scopeText) ? 12 : -10) -
+          normalizedMissing.length * 7,
+      ),
+    ),
+  );
+
+  return {
+    missing: normalizedMissing,
+    lockScore,
+    readyToLock: normalizedMissing.length === 0 && lockScore >= 80,
+    completionPercent: completion.percent,
+  };
+}
+
+function buildRequirementLockSnapshot(row: any, intake: any, meetingPresent: boolean) {
+  const validation = normalizeLockIssues(intake, row);
+
+  return {
+    locked: Boolean(row?.locked),
+    lockedAt: row?.locked_at || null,
+    lockedBy: row?.locked_by || null,
+    lockedByRole: row?.locked_by_role || null,
+    lockedVersion: row?.lock_version ?? row?.version ?? 1,
+    lockPasswordSet: Boolean(row?.lock_password_hash),
+    lockScore: row?.lock_score ?? validation.lockScore,
+    lockMissing: toJsonArray(row?.lock_missing).length ? toJsonArray(row?.lock_missing) : validation.missing,
+    readyToLock: row?.locked ? true : validation.readyToLock,
+    completionPercent: validation.completionPercent,
+    unlockFailedAttempts: Number(row?.unlock_failed_attempts || 0),
+    unlockBlockedUntil: row?.unlock_blocked_until || null,
+    meetingPresent,
   };
 }
 
@@ -162,13 +300,228 @@ async function ensureTables() {
       status TEXT NOT NULL DEFAULT 'draft',
       version INTEGER NOT NULL DEFAULT 1,
       locked BOOLEAN NOT NULL DEFAULT false,
+      lock_password_hash TEXT,
+      locked_at TIMESTAMPTZ,
+      locked_by TEXT,
+      locked_by_role TEXT,
+      lock_version INTEGER,
+      lock_score INTEGER,
+      lock_missing JSONB NOT NULL DEFAULT '[]'::jsonb,
+      unlock_failed_attempts INTEGER NOT NULL DEFAULT 0,
+      unlock_blocked_until TIMESTAMPTZ,
+      unlocked_at TIMESTAMPTZ,
+      unlocked_by TEXT,
+      unlocked_by_role TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
 
+  await db.$executeRawUnsafe(`ALTER TABLE requirements ADD COLUMN IF NOT EXISTS lock_password_hash TEXT;`);
+  await db.$executeRawUnsafe(`ALTER TABLE requirements ADD COLUMN IF NOT EXISTS locked_at TIMESTAMPTZ;`);
+  await db.$executeRawUnsafe(`ALTER TABLE requirements ADD COLUMN IF NOT EXISTS locked_by TEXT;`);
+  await db.$executeRawUnsafe(`ALTER TABLE requirements ADD COLUMN IF NOT EXISTS locked_by_role TEXT;`);
+  await db.$executeRawUnsafe(`ALTER TABLE requirements ADD COLUMN IF NOT EXISTS lock_version INTEGER;`);
+  await db.$executeRawUnsafe(`ALTER TABLE requirements ADD COLUMN IF NOT EXISTS lock_score INTEGER;`);
+  await db.$executeRawUnsafe(`ALTER TABLE requirements ADD COLUMN IF NOT EXISTS lock_missing JSONB NOT NULL DEFAULT '[]'::jsonb;`);
+  await db.$executeRawUnsafe(`ALTER TABLE requirements ADD COLUMN IF NOT EXISTS unlock_failed_attempts INTEGER NOT NULL DEFAULT 0;`);
+  await db.$executeRawUnsafe(`ALTER TABLE requirements ADD COLUMN IF NOT EXISTS unlock_blocked_until TIMESTAMPTZ;`);
+  await db.$executeRawUnsafe(`ALTER TABLE requirements ADD COLUMN IF NOT EXISTS unlocked_at TIMESTAMPTZ;`);
+  await db.$executeRawUnsafe(`ALTER TABLE requirements ADD COLUMN IF NOT EXISTS unlocked_by TEXT;`);
+  await db.$executeRawUnsafe(`ALTER TABLE requirements ADD COLUMN IF NOT EXISTS unlocked_by_role TEXT;`);
+
   tablesEnsured = true;
 }
+
+router.get("/intake/ai/health", async (_req: Request, res: Response) => {
+  try {
+    const provider = getAIProvider();
+    const result = await provider.execute("Respond with: OK");
+    const isLive = result.provider === "ollama";
+
+    return res.json({
+      success: true,
+      data: {
+        available: isLive,
+        provider: result.provider,
+        model: result.model,
+        latencyMs: result.latency,
+      },
+    });
+  } catch {
+    return res.json({
+      success: true,
+      data: {
+        available: false,
+        provider: "fallback",
+        model: "local-fallback",
+        latencyMs: 0,
+      },
+    });
+  }
+});
+
+router.post("/intake/ai/suggest", async (req: Request, res: Response) => {
+  const projectType = toSafeString(req.body?.projectType, "Other");
+  const description = toSafeString(req.body?.description);
+  const currentFeatures = normalizeArray<string>(req.body?.currentFeatures, []);
+
+  const fallback = fallbackSuggestions(projectType, currentFeatures);
+
+  try {
+    const provider = getAIProvider();
+    const prompt = `You are a product strategy expert.\nProject type: ${projectType}\nDescription: ${description}\nCurrent features: ${currentFeatures.join(", ") || "None"}\nReturn ONLY JSON: {\"suggestions\":[...],\"reasoning\":\"...\"}. Suggest 2-4 features not already present.`;
+    const result = await provider.execute(prompt);
+    const parsed = safeJsonParse<{ suggestions?: string[]; reasoning?: string }>(result.text, {});
+
+    const suggestions = Array.isArray(parsed.suggestions)
+      ? parsed.suggestions.filter((item) => typeof item === "string" && !currentFeatures.includes(item)).slice(0, 4)
+      : fallback.suggestions;
+
+    return res.json({
+      success: true,
+      data: {
+        suggestions,
+        reasoning: typeof parsed.reasoning === "string" && parsed.reasoning.trim()
+          ? parsed.reasoning
+          : fallback.reasoning,
+      },
+    });
+  } catch {
+    return res.json({ success: true, data: fallback });
+  }
+});
+
+router.post("/intake/ai/analyze", async (req: Request, res: Response) => {
+  const projectType = toSafeString(req.body?.projectType, "Other");
+  const features = normalizeArray<string>(req.body?.features, []);
+  const budget = toSafeNumber(req.body?.budget, 0);
+  const deadline = toSafeString(req.body?.deadline);
+  const description = toSafeString(req.body?.description);
+
+  const daysToDeadline = deadline
+    ? Math.ceil((new Date(deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+    : 0;
+
+  const fallback = fallbackAnalysis(projectType, features.length, budget, daysToDeadline);
+
+  try {
+    const provider = getAIProvider();
+    const prompt = `You are a project delivery expert.\nType: ${projectType}\nFeatures: ${features.join(", ") || "None"}\nBudget: ${budget}\nDays to deadline: ${daysToDeadline}\nDescription: ${description}\nReturn ONLY JSON with keys completionScore, insights, risks, recommendations.`;
+    const result = await provider.execute(prompt);
+    const parsed = safeJsonParse<{
+      completionScore?: number;
+      insights?: string[];
+      risks?: string[];
+      recommendations?: string[];
+    }>(result.text, {});
+
+    return res.json({
+      success: true,
+      data: {
+        completionScore: Math.min(100, Math.max(0, Number(parsed.completionScore ?? fallback.completionScore))),
+        insights: Array.isArray(parsed.insights) ? parsed.insights.slice(0, 3) : fallback.insights,
+        risks: Array.isArray(parsed.risks) ? parsed.risks.slice(0, 2) : fallback.risks,
+        recommendations: Array.isArray(parsed.recommendations)
+          ? parsed.recommendations.slice(0, 2)
+          : fallback.recommendations,
+      },
+    });
+  } catch {
+    return res.json({ success: true, data: fallback });
+  }
+});
+
+router.post("/intake/ai/summary", async (req: Request, res: Response) => {
+  const businessName = toSafeString(req.body?.businessName, "This business");
+  const projectType = toSafeString(req.body?.projectType, "digital");
+  const features = normalizeArray<string>(req.body?.features, []);
+  const targetAudience = toSafeString(req.body?.targetAudience);
+  const budget = toSafeNumber(req.body?.budget, 0);
+  const selectedPackage = toSafeString(req.body?.selectedPackage);
+  const priority = toSafeString(req.body?.priority);
+  const description = toSafeString(req.body?.description);
+
+  const fallback = fallbackSummary(businessName, projectType, features);
+
+  try {
+    const provider = getAIProvider();
+    const prompt = `Write a concise executive summary in 2-3 sentences.\nBusiness: ${businessName}\nProject type: ${projectType}\nFeatures: ${features.join(", ")}\nAudience: ${targetAudience}\nBudget: ${budget}\nPackage: ${selectedPackage}\nPriority: ${priority}\nDescription: ${description}`;
+    const result = await provider.execute(prompt);
+    const text = String(result.text || "").trim();
+
+    return res.json({
+      success: true,
+      data: {
+        summary: text || fallback,
+      },
+    });
+  } catch {
+    return res.json({
+      success: true,
+      data: {
+        summary: fallback,
+      },
+    });
+  }
+});
+
+router.post("/intake/ai/refine-description", async (req: Request, res: Response) => {
+  const businessName = toSafeString(req.body?.businessName, "the client");
+  const projectType = toSafeString(req.body?.projectType, "digital");
+  const goal = toSafeString(req.body?.goal, "business growth");
+  const description = toSafeString(req.body?.description);
+  const userRoles = normalizeArray<string>(req.body?.userRoles, []).slice(0, 8);
+  const modules = normalizeArray<string>(req.body?.modules, []).slice(0, 12);
+  const features = normalizeArray<string>(req.body?.features, []).slice(0, 16);
+
+  if (!description) {
+    return res.status(400).json({ success: false, error: "description is required" });
+  }
+
+  try {
+    const provider = getAIProvider();
+    const prompt = [
+      "You are a senior product requirements analyst.",
+      "Rewrite the project description into a stronger, execution-ready scope.",
+      "Keep it concise but concrete.",
+      "Return plain text only.",
+      "",
+      `Business: ${businessName}`,
+      `Project type: ${projectType}`,
+      `Goal: ${goal}`,
+      `User roles: ${userRoles.join(", ") || "Not specified"}`,
+      `Modules/pages: ${modules.join(", ") || "Not specified"}`,
+      `Core capabilities: ${features.join(", ") || "Not specified"}`,
+      `Current description: ${description}`,
+      "",
+      "Output format:",
+      "First keep the original intent in 1 sentence.",
+      "Then add a paragraph starting with 'Refined Scope:' and include objectives, user roles, modules/pages, API/integration expectations, milestones, and measurable launch KPIs.",
+    ].join("\n");
+
+    const result = await provider.execute(prompt);
+    if (result.provider !== "ollama") {
+      return res.status(503).json({ success: false, error: "Real AI is unavailable. Start Ollama and try again." });
+    }
+
+    const refined = String(result.text || "").trim();
+    if (!refined) {
+      return res.status(502).json({ success: false, error: "AI returned an empty response" });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        description: refined,
+        provider: result.provider,
+        model: result.model,
+      },
+    });
+  } catch {
+    return res.status(500).json({ success: false, error: "Failed to refine description with AI" });
+  }
+});
 
 router.post("/client-link/send", authMiddleware, async (req: Request, res: Response) => {
   try {
@@ -448,6 +801,7 @@ router.post("/intake/submit", async (req: Request, res: Response) => {
         status = CASE WHEN requirements.locked = true THEN requirements.status ELSE 'draft' END,
         version = requirements.version + 1,
         updated_at = EXCLUDED.updated_at
+      WHERE requirements.locked = false
       `,
       requirementId,
       leadId,
@@ -564,6 +918,7 @@ router.get("/requirements/:leadId", authMiddleware, async (req: Request, res: Re
           version: Number(requirementRows[0].version || 1),
           updatedAt: requirementRows[0].updated_at,
           items: normalizeArray((requirementRows[0].analysis || {}).items, []),
+          lock: buildRequirementLockSnapshot(requirementRows[0], intake, Boolean(meetingRows[0])),
         }
       : null;
 
@@ -678,15 +1033,230 @@ router.post("/requirements/:leadId/lock", authMiddleware, async (req: Request, r
     await ensureTables();
 
     const leadId = toSafeString(req.params.leadId);
-    await db.$executeRawUnsafe(
-      `UPDATE requirements SET locked = true, status = 'locked', updated_at = NOW() WHERE lead_id = $1`,
+    const password = toSafeString(req.body?.password);
+    const confirmPassword = toSafeString(req.body?.confirmPassword);
+    const override = Boolean(req.body?.override);
+    const actor = getRequestActor(req);
+
+    const requirementRows = await db.$queryRawUnsafe<any[]>(`SELECT * FROM requirements WHERE lead_id = $1 LIMIT 1`, leadId);
+    const requirement = requirementRows[0];
+
+    if (!requirement) {
+      return res.status(404).json({ success: false, error: "Requirement not found" });
+    }
+
+    if (Boolean(requirement.locked)) {
+      return res.status(409).json({ success: false, error: "Requirement is already locked" });
+    }
+
+    if (!password || !/^\d{4}$/.test(password)) {
+      return res.status(400).json({ success: false, error: "Lock password must be a 4-digit code" });
+    }
+
+    if (confirmPassword && confirmPassword !== password) {
+      return res.status(400).json({ success: false, error: "Passwords do not match" });
+    }
+
+    const intakeRows = await db.$queryRawUnsafe<any[]>(`SELECT * FROM intake_submissions WHERE lead_id = $1 LIMIT 1`, leadId);
+    const intake = intakeRows[0] || {};
+    const validation = normalizeLockIssues(intake, requirement);
+
+    if (!validation.readyToLock && !override) {
+      return res.status(409).json({
+        success: false,
+        error: "Requirement needs review before locking",
+        data: {
+          leadId,
+          readyToLock: false,
+          lockScore: validation.lockScore,
+          missing: validation.missing,
+          completionPercent: validation.completionPercent,
+        },
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const lockRows = await db.$queryRawUnsafe<any[]>(
+      `
+      UPDATE requirements
+      SET
+        locked = true,
+        status = 'locked',
+        lock_password_hash = $2,
+        locked_at = NOW(),
+        locked_by = $3,
+        locked_by_role = $4,
+        lock_version = version,
+        lock_score = $5,
+        lock_missing = $6::jsonb,
+        unlock_failed_attempts = 0,
+        unlock_blocked_until = NULL,
+        unlocked_at = NULL,
+        unlocked_by = NULL,
+        unlocked_by_role = NULL,
+        updated_at = NOW()
+      WHERE lead_id = $1
+      RETURNING *
+      `,
       leadId,
+      hashedPassword,
+      actor.id,
+      actor.role,
+      validation.lockScore,
+      JSON.stringify(validation.missing),
     );
 
-    return res.json({ success: true, data: { leadId, locked: true } });
+    const lockedRow = lockRows[0];
+    await logAudit({
+      userId: actor.id,
+      action: "REQUIREMENT_LOCKED",
+      meta: {
+        leadId,
+        lockScore: validation.lockScore,
+        override,
+        missing: validation.missing,
+        lockedVersion: lockedRow?.lock_version ?? requirement.version,
+      },
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        leadId,
+        locked: true,
+        lockScore: validation.lockScore,
+        missing: validation.missing,
+        lockedAt: lockedRow?.locked_at || new Date().toISOString(),
+        lockedVersion: lockedRow?.lock_version ?? requirement.version,
+      },
+    });
   } catch (error) {
     console.error("requirements lock error:", error);
     return res.status(500).json({ success: false, error: "Failed to lock requirements" });
+  }
+});
+
+router.post("/requirements/:leadId/unlock", authMiddleware, async (req: Request, res: Response) => {
+  try {
+    await ensureTables();
+
+    const leadId = toSafeString(req.params.leadId);
+    const password = toSafeString(req.body?.password);
+    const override = Boolean(req.body?.override);
+    const actor = getRequestActor(req);
+
+    const requirementRows = await db.$queryRawUnsafe<any[]>(`SELECT * FROM requirements WHERE lead_id = $1 LIMIT 1`, leadId);
+    const requirement = requirementRows[0];
+
+    if (!requirement) {
+      return res.status(404).json({ success: false, error: "Requirement not found" });
+    }
+
+    if (!Boolean(requirement.locked)) {
+      return res.status(409).json({ success: false, error: "Requirement is not locked" });
+    }
+
+    const blockedUntil = requirement.unlock_blocked_until ? new Date(requirement.unlock_blocked_until).getTime() : 0;
+    if (!override && blockedUntil && blockedUntil > Date.now()) {
+      return res.status(423).json({
+        success: false,
+        error: "Unlock temporarily blocked due to failed attempts",
+        data: {
+          blockedUntil: requirement.unlock_blocked_until,
+          failedAttempts: Number(requirement.unlock_failed_attempts || 0),
+        },
+      });
+    }
+
+    const adminOverride = override && actor.isAdmin;
+    let passwordOk = false;
+    if (adminOverride) {
+      passwordOk = true;
+    } else {
+      if (!password) {
+        return res.status(400).json({ success: false, error: "Password is required" });
+      }
+
+      passwordOk = Boolean(requirement.lock_password_hash) && (await bcrypt.compare(password, requirement.lock_password_hash));
+    }
+
+    if (!passwordOk) {
+      const attempts = Number(requirement.unlock_failed_attempts || 0) + 1;
+      const shouldBlock = attempts >= MAX_UNLOCK_ATTEMPTS;
+      const [failedRow] = await db.$queryRawUnsafe<any[]>(
+        `
+        UPDATE requirements
+        SET
+          unlock_failed_attempts = $2,
+          unlock_blocked_until = CASE WHEN $3 THEN NOW() + ($4 || ' minutes')::interval ELSE unlock_blocked_until END,
+          updated_at = NOW()
+        WHERE lead_id = $1
+        RETURNING *
+        `,
+        leadId,
+        attempts,
+        shouldBlock,
+        UNLOCK_BLOCK_MINUTES,
+      );
+
+      await logAudit({
+        userId: actor.id,
+        action: "REQUIREMENT_UNLOCK_FAILED",
+        meta: { leadId, attempts, blocked: shouldBlock },
+      });
+
+      return res.status(401).json({
+        success: false,
+        error: "Incorrect password",
+        data: {
+          failedAttempts: attempts,
+          blockedUntil: failedRow?.unlock_blocked_until || null,
+          maxAttempts: MAX_UNLOCK_ATTEMPTS,
+        },
+      });
+    }
+
+    const [unlockedRow] = await db.$queryRawUnsafe<any[]>(
+      `
+      UPDATE requirements
+      SET
+        locked = false,
+        status = 'draft',
+        unlock_failed_attempts = 0,
+        unlock_blocked_until = NULL,
+        unlocked_at = NOW(),
+        unlocked_by = $2,
+        unlocked_by_role = $3,
+        updated_at = NOW()
+      WHERE lead_id = $1
+      RETURNING *
+      `,
+      leadId,
+      actor.id,
+      actor.role,
+    );
+
+    await logAudit({
+      userId: actor.id,
+      action: adminOverride ? "REQUIREMENT_UNLOCK_OVERRIDE" : "REQUIREMENT_UNLOCKED",
+      meta: {
+        leadId,
+        override: adminOverride,
+        unlockedVersion: unlockedRow?.lock_version ?? requirement.lock_version ?? requirement.version,
+      },
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        leadId,
+        locked: false,
+        unlockedAt: unlockedRow?.unlocked_at || new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    console.error("requirements unlock error:", error);
+    return res.status(500).json({ success: false, error: "Failed to unlock requirements" });
   }
 });
 

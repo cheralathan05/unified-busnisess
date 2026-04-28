@@ -152,7 +152,7 @@ const BUSINESS_NAME_REGEX = /^[A-Za-z0-9][A-Za-z0-9\s&.,'()/-]{1,79}$/;
 const COMPANY_SIZE_REGEX = /^(?:\d{1,6}(?:\s*-\s*\d{1,6})?|\d{1,6}\+|[A-Za-z][A-Za-z0-9\s&-]{1,40})$/;
 const TARGET_AUDIENCE_REGEX = /^(?=.*[A-Za-z])[A-Za-z0-9\s,&.'()/-]{3,120}$/;
 const OLLAMA_API_URL = import.meta.env.VITE_OLLAMA_URL || "http://localhost:11434";
-const OLLAMA_MODEL = import.meta.env.VITE_OLLAMA_MODEL || "mistral";
+const OLLAMA_MODEL = import.meta.env.VITE_OLLAMA_MODEL || "llama3:latest";
 
 type OllamaScopeAnalysis = {
   completionScore: number;

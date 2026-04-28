@@ -318,7 +318,10 @@ type ClientIntakeRequirementInput = {
   leadName: string;
   company: string;
   projectType: string;
+  goal?: string;
   features: string[];
+  userRoles?: string[];
+  modules?: string[];
   uploadedFiles?: Array<{
     name: string;
     size: number;
@@ -350,12 +353,15 @@ const formatFileSize = (size: number) => {
 export const createRequirementsFromClientIntake = (input: ClientIntakeRequirementInput): Requirement[] => {
   const now = Date.now();
   const sourceLabel = `Client Intake ${input.company}`;
+  const goalLabel = input.goal || "Not specified";
+  const roleLabel = input.userRoles && input.userRoles.length ? input.userRoles.join(", ") : "Not specified";
+  const moduleLabel = input.modules && input.modules.length ? input.modules.join(", ") : "Not specified";
   const converted: Requirement[] = [
     {
       id: `req-intake-core-${now}`,
       leadId: input.leadId,
       title: `${input.projectType} scope for ${input.company}`,
-      description: input.ideaDescription,
+      description: `${input.ideaDescription}\n\nGoal: ${goalLabel}\nRoles: ${roleLabel}\nModules: ${moduleLabel}`,
       type: "manual",
       source: sourceLabel,
       category: "feature",
@@ -381,7 +387,7 @@ export const createRequirementsFromClientIntake = (input: ClientIntakeRequiremen
       id: `req-intake-timeline-${now}`,
       leadId: input.leadId,
       title: `Timeline and audience for ${input.company}`,
-      description: `Deadline ${input.deadline || "to be finalized"}. Target audience: ${input.targetAudience}. AI summary: ${input.aiSummary}`,
+      description: `Deadline ${input.deadline || "to be finalized"}. Target audience: ${input.targetAudience}. Goal: ${goalLabel}. AI summary: ${input.aiSummary}`,
       type: "manual",
       source: sourceLabel,
       category: "non-functional",
@@ -406,6 +412,34 @@ export const createRequirementsFromClientIntake = (input: ClientIntakeRequiremen
     updatedAt: now,
   }));
 
+  const roleRequirements = (input.userRoles || []).map((role, index) => ({
+    id: `req-intake-role-${now}-${index}`,
+    leadId: input.leadId,
+    title: `${role} access and flow`,
+    description: `${role} needs role-specific screens and permissions for ${input.company}.`,
+    type: "manual" as const,
+    source: sourceLabel,
+    category: "functional" as const,
+    priority: toRequirementPriority(input.priority),
+    status: "active" as const,
+    createdAt: now,
+    updatedAt: now,
+  }));
+
+  const moduleRequirements = (input.modules || []).map((moduleName, index) => ({
+    id: `req-intake-module-${now}-${index}`,
+    leadId: input.leadId,
+    title: `${moduleName} page/module`,
+    description: `Include the ${moduleName} module for ${input.company} as part of the project scope.`,
+    type: "manual" as const,
+    source: sourceLabel,
+    category: "feature" as const,
+    priority: toRequirementPriority(input.priority),
+    status: "active" as const,
+    createdAt: now,
+    updatedAt: now,
+  }));
+
   const attachmentRequirements = (input.uploadedFiles || []).map((file, index) => ({
     id: `req-intake-asset-${now}-${index}`,
     leadId: input.leadId,
@@ -420,10 +454,10 @@ export const createRequirementsFromClientIntake = (input: ClientIntakeRequiremen
     updatedAt: now,
   }));
 
-  const all = [...getRequirements(), ...converted, ...featureRequirements, ...attachmentRequirements];
+  const all = [...getRequirements(), ...converted, ...featureRequirements, ...roleRequirements, ...moduleRequirements, ...attachmentRequirements];
   const { unique } = deduplicateRequirements(all);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(unique));
 
-  return [...converted, ...featureRequirements, ...attachmentRequirements];
+  return [...converted, ...featureRequirements, ...roleRequirements, ...moduleRequirements, ...attachmentRequirements];
 };
 

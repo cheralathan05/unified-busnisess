@@ -25,12 +25,42 @@ interface StreamingOllamaResponse {
 }
 
 const OLLAMA_API_URL = import.meta.env.VITE_OLLAMA_URL || "http://localhost:11434";
-const DEFAULT_MODEL = "mistral"; // Fast, smart model. Alternatives: "llama2", "neural-chat", "dolphin-mixtral"
+const DEFAULT_MODEL = import.meta.env.VITE_OLLAMA_MODEL || "llama3:latest";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
+
+async function requestBackendAI<T>(path: string, payload?: unknown): Promise<T | null> {
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      method: payload ? "POST" : "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: payload ? JSON.stringify(payload) : undefined,
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!response.ok) return null;
+
+    const data = (await response.json()) as { data?: T } | T;
+    if (data && typeof data === "object" && "data" in (data as { data?: T })) {
+      return (data as { data?: T }).data ?? null;
+    }
+
+    return data as T;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Check if Ollama server is accessible
  */
 export async function checkOllamaHealth(): Promise<boolean> {
+  const backendHealth = await requestBackendAI<{ available?: boolean }>("/intake/ai/health");
+  if (typeof backendHealth?.available === "boolean") {
+    return backendHealth.available;
+  }
+
   try {
     const response = await fetch(`${OLLAMA_API_URL}/api/tags`, {
       signal: AbortSignal.timeout(3000),
@@ -50,6 +80,19 @@ export async function suggestFeaturesForProject(
   description: string,
   currentFeatures: string[]
 ): Promise<{ suggestions: string[]; reasoning: string }> {
+  const backendResult = await requestBackendAI<{ suggestions: string[]; reasoning: string }>("/intake/ai/suggest", {
+    projectType,
+    description,
+    currentFeatures,
+  });
+
+  if (backendResult?.suggestions?.length || backendResult?.reasoning) {
+    return {
+      suggestions: Array.isArray(backendResult.suggestions) ? backendResult.suggestions.slice(0, 4) : [],
+      reasoning: typeof backendResult.reasoning === "string" ? backendResult.reasoning : "Smart suggestions generated",
+    };
+  }
+
   const featurePool = [
     "Login/Auth",
     "Payment",
@@ -131,6 +174,28 @@ export async function analyzeProjectScope(
   risks: string[];
   recommendations: string[];
 }> {
+  const backendResult = await requestBackendAI<{
+    completionScore: number;
+    insights: string[];
+    risks: string[];
+    recommendations: string[];
+  }>("/intake/ai/analyze", {
+    projectType,
+    features,
+    budget,
+    deadline,
+    description,
+  });
+
+  if (backendResult) {
+    return {
+      completionScore: Math.min(100, Math.max(0, Number(backendResult.completionScore ?? 0))),
+      insights: Array.isArray(backendResult.insights) ? backendResult.insights.slice(0, 3) : [],
+      risks: Array.isArray(backendResult.risks) ? backendResult.risks.slice(0, 2) : [],
+      recommendations: Array.isArray(backendResult.recommendations) ? backendResult.recommendations.slice(0, 2) : [],
+    };
+  }
+
   const daysToDeadline = deadline ? Math.ceil((new Date(deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : 0;
 
   const prompt = `You are a project delivery expert. Analyze this project:
@@ -205,6 +270,21 @@ export async function generateProjectSummary(
   priority: string,
   description: string
 ): Promise<string> {
+  const backendResult = await requestBackendAI<{ summary: string }>("/intake/ai/summary", {
+    businessName,
+    projectType,
+    features,
+    targetAudience,
+    budget,
+    selectedPackage,
+    priority,
+    description,
+  });
+
+  if (typeof backendResult?.summary === "string" && backendResult.summary.trim()) {
+    return backendResult.summary.trim();
+  }
+
   const prompt = `Write a compelling, executive-level summary of this business development opportunity:
 
 Business: ${businessName}

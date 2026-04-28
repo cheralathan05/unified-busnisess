@@ -50,6 +50,13 @@ export type ClientIntakeSubmission = {
   form: ClientIntakeForm;
 };
 
+type UpdateClientIntakeSubmissionInput = {
+  submissionId: string;
+  form: ClientIntakeForm;
+  aiSummary: string;
+  asNewVersion?: boolean;
+};
+
 const DRAFT_KEY = "ai-project-os.client-intake-drafts";
 const SUBMISSION_KEY = "ai-project-os.client-intake-submissions";
 
@@ -178,6 +185,50 @@ const buildMeetingNotes = (form: ClientIntakeForm, aiSummary: string) => {
   ].join("\n");
 };
 
+const syncSubmissionToLeadAndRequirements = (submission: ClientIntakeSubmission) => {
+  if (submission.leadId === undefined) {
+    return;
+  }
+
+  const lead = getLeadById(submission.leadId);
+  if (lead) {
+    const nextLead: LeadRecord = {
+      ...lead,
+      name: submission.form.contactName || lead.name,
+      company: submission.form.businessName || lead.company,
+      email: submission.form.email || lead.email,
+      phone: submission.form.phone || lead.phone,
+      project: submission.form.projectType,
+      projectDescription: submission.form.ideaDescription,
+      meetingNotes: buildMeetingNotes(submission.form, submission.aiSummary),
+      requirements: buildLeadRequirements(submission.form),
+      notes: `${lead.notes}\nRequirement refined on ${new Date().toLocaleString()}.`,
+      lastActivity: "just now",
+    };
+    updateLead(nextLead);
+  }
+
+  createRequirementsFromClientIntake({
+    leadId: submission.leadId,
+    leadName: submission.leadName || submission.form.contactName,
+    company: submission.form.businessName,
+    projectType: submission.form.projectType,
+    goal: submission.form.goal,
+    features: submission.form.features,
+    userRoles: submission.form.userRoles,
+    modules: submission.form.modules,
+    uploadedFiles: submission.form.uploadedFiles,
+    targetAudience: submission.form.targetAudience,
+    ideaDescription: submission.form.ideaDescription,
+    priority: submission.form.priority,
+    budget: submission.form.budget,
+    estimatedPrice: submission.form.estimatedPrice,
+    deadline: submission.form.deadline,
+    selectedPackage: submission.form.selectedPackage,
+    aiSummary: submission.aiSummary,
+  });
+};
+
 export const getClientIntakeDraft = (accessId: string) => {
   const drafts = safeRead<Record<string, ClientIntakeForm>>(DRAFT_KEY, {});
   return drafts[accessId];
@@ -228,42 +279,41 @@ export const submitClientIntake = (accessId: string, form: ClientIntakeForm, aiS
     ],
   );
 
-  if (lead) {
-    const nextLead: LeadRecord = {
-      ...lead,
-      name: form.contactName || lead.name,
-      company: form.businessName || lead.company,
-      email: form.email || lead.email,
-      phone: form.phone || lead.phone,
-      project: form.projectType,
-      projectDescription: form.ideaDescription,
-      meetingNotes: buildMeetingNotes(form, aiSummary),
-      requirements: buildLeadRequirements(form),
-      notes: `${lead.notes}\nClient intake submitted on ${new Date().toLocaleString()}.`,
-      lastActivity: "just now",
-    };
-    updateLead(nextLead);
-  }
-
-  createRequirementsFromClientIntake({
-    leadId: lead?.id,
-    leadName: lead?.name ?? form.contactName,
-    company: form.businessName,
-    projectType: form.projectType,
-    features: form.features,
-    uploadedFiles: form.uploadedFiles,
-    targetAudience: form.targetAudience,
-    ideaDescription: form.ideaDescription,
-    priority: form.priority,
-    budget: form.budget,
-    estimatedPrice: form.estimatedPrice,
-    deadline: form.deadline,
-    selectedPackage: form.selectedPackage,
-    aiSummary,
-  });
+  syncSubmissionToLeadAndRequirements(submission);
 
   void syncClientIntakeSubmissionToBackend(submission);
 
   clearClientIntakeDraft(accessId);
   return submission;
+};
+
+export const updateClientIntakeSubmission = ({
+  submissionId,
+  form,
+  aiSummary,
+  asNewVersion = false,
+}: UpdateClientIntakeSubmissionInput) => {
+  const existing = getClientIntakeSubmissions();
+  const current = existing.find((item) => item.id === submissionId);
+
+  if (!current) return null;
+
+  const now = Date.now();
+  const updated: ClientIntakeSubmission = {
+    ...current,
+    id: asNewVersion ? `intake-${now}` : current.id,
+    submittedAt: now,
+    aiSummary,
+    form,
+  };
+
+  safeWrite(
+    SUBMISSION_KEY,
+    [updated, ...existing.filter((item) => item.id !== current.id)],
+  );
+
+  syncSubmissionToLeadAndRequirements(updated);
+  void syncClientIntakeSubmissionToBackend(updated);
+
+  return updated;
 };
