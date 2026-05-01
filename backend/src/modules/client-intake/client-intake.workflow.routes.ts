@@ -41,6 +41,13 @@ type IntakePayload = {
   estimatedPrice?: number;
 };
 
+type LockRequestPayload = {
+  password?: unknown;
+  confirmPassword?: unknown;
+  override?: unknown;
+  intake?: IntakePayload;
+};
+
 function normalizeArray<T>(value: unknown, fallback: T[]): T[] {
   return Array.isArray(value) ? (value as T[]) : fallback;
 }
@@ -1033,32 +1040,34 @@ router.post("/requirements/:leadId/lock", authMiddleware, async (req: Request, r
     await ensureTables();
 
     const leadId = toSafeString(req.params.leadId);
-    const password = toSafeString(req.body?.password);
-    const confirmPassword = toSafeString(req.body?.confirmPassword);
-    const override = Boolean(req.body?.override);
+    const body = (req.body || {}) as LockRequestPayload;
+    const password = toSafeString(body.password);
+    const confirmPassword = toSafeString(body.confirmPassword);
+    const override = Boolean(body.override);
     const actor = getRequestActor(req);
+    const intakePayload = body.intake && typeof body.intake === "object" ? body.intake : null;
 
     const requirementRows = await db.$queryRawUnsafe<any[]>(`SELECT * FROM requirements WHERE lead_id = $1 LIMIT 1`, leadId);
     let requirement = requirementRows[0];
+    let intake = (await db.$queryRawUnsafe<any[]>(`SELECT * FROM intake_submissions WHERE lead_id = $1 LIMIT 1`, leadId))[0];
 
     if (!requirement) {
       // Attempt to synthesize a requirements record from an existing intake submission so lock can proceed
-      const intakeRowsForCreate = await db.$queryRawUnsafe<any[]>(`SELECT * FROM intake_submissions WHERE lead_id = $1 LIMIT 1`, leadId);
-      const intakeForCreate = intakeRowsForCreate[0];
+      const intakeForCreate = intake || intakePayload;
 
       if (intakeForCreate) {
         const ai = buildRequirementAnalysis({
           leadId,
-          businessName: intakeForCreate.business_name,
-          projectType: intakeForCreate.project_type,
+          businessName: intakeForCreate.business_name ?? intakeForCreate.businessName,
+          projectType: intakeForCreate.project_type ?? intakeForCreate.projectType,
           features: normalizeArray(intakeForCreate.features, []),
-          ideaDescription: intakeForCreate.description,
-          budget: intakeForCreate.budget,
-          deadline: intakeForCreate.timeline,
-          selectedPackage: intakeForCreate.package,
-          uploadedFiles: normalizeArray(intakeForCreate.files, []),
-          meetingSlot: intakeForCreate.meeting_slot,
-          estimatedPrice: intakeForCreate.estimated_price,
+          ideaDescription: intakeForCreate.description ?? intakeForCreate.ideaDescription,
+          budget: intakeForCreate.budget ?? intakeForCreate.estimatedPrice,
+          deadline: intakeForCreate.timeline ?? intakeForCreate.deadline,
+          selectedPackage: intakeForCreate.package ?? intakeForCreate.selectedPackage,
+          uploadedFiles: normalizeArray(intakeForCreate.files ?? intakeForCreate.uploadedFiles, []),
+          meetingSlot: intakeForCreate.meeting_slot ?? intakeForCreate.meetingSlot,
+          estimatedPrice: intakeForCreate.estimated_price ?? intakeForCreate.estimatedPrice,
         });
 
         const requirementId = `req-${leadId}`;
@@ -1102,9 +1111,26 @@ router.post("/requirements/:leadId/lock", authMiddleware, async (req: Request, r
       return res.status(400).json({ success: false, error: "Passwords do not match" });
     }
 
-    const intakeRows = await db.$queryRawUnsafe<any[]>(`SELECT * FROM intake_submissions WHERE lead_id = $1 LIMIT 1`, leadId);
-    const intake = intakeRows[0] || {};
-    const validation = normalizeLockIssues(intake, requirement);
+    if (!intake && intakePayload) {
+      intake = {
+        lead_id: leadId,
+        business_name: intakePayload.businessName,
+        project_type: intakePayload.projectType,
+        features: normalizeArray(intakePayload.features, []),
+        description: intakePayload.ideaDescription,
+        budget: intakePayload.budget,
+        timeline: intakePayload.deadline,
+        package: intakePayload.selectedPackage,
+        files: normalizeArray(intakePayload.uploadedFiles, []),
+        meeting_slot: intakePayload.meetingSlot,
+        contact_name: intakePayload.contactName,
+        email: intakePayload.email,
+        phone: intakePayload.phone,
+        estimated_price: intakePayload.estimatedPrice,
+      };
+    }
+
+    const validation = normalizeLockIssues(intake || {}, requirement);
 
     if (!validation.readyToLock && !override) {
       return res.status(409).json({

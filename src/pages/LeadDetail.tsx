@@ -364,52 +364,7 @@ export default function LeadDetail() {
           </div>
         </div>
 
-        <GlassCard className="space-y-4">
-          <h3 className="text-lg font-semibold text-foreground">Requirement Builder (Editable)</h3>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-xl border border-border/50 bg-secondary/20 p-3">
-              <p className="text-xs text-muted-foreground mb-2">Budget</p>
-              <Input value={requirements.budgetSummary} onChange={(event) => setRequirements((prev) => ({ ...prev, budgetSummary: event.target.value }))} />
-            </div>
-            <div className="rounded-xl border border-border/50 bg-secondary/20 p-3">
-              <p className="text-xs text-muted-foreground mb-2">Timeline</p>
-              <Input value={requirements.timelineSummary} onChange={(event) => setRequirements((prev) => ({ ...prev, timelineSummary: event.target.value }))} />
-            </div>
-            <div className="rounded-xl border border-border/50 bg-secondary/20 p-3">
-              <p className="text-xs text-muted-foreground mb-2">Priority</p>
-              <Input value={requirements.prioritySummary} onChange={(event) => setRequirements((prev) => ({ ...prev, prioritySummary: event.target.value }))} />
-            </div>
-            <div className="rounded-xl border border-border/50 bg-secondary/20 p-3">
-              <p className="text-xs text-muted-foreground mb-2">Feature Count</p>
-              <p className="text-sm text-foreground">{requirements.features.length}</p>
-            </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-xl border border-border/50 bg-secondary/20 p-3">
-              <p className="text-sm font-medium text-foreground mb-2">Frontend</p>
-              <div className="space-y-1 text-sm text-muted-foreground">
-                {(requirements.frontend.length ? requirements.frontend : ["Home page", "Product page"]).map((item, index) => <p key={`fe-${index}`}>- {item}</p>)}
-              </div>
-            </div>
-            <div className="rounded-xl border border-border/50 bg-secondary/20 p-3">
-              <p className="text-sm font-medium text-foreground mb-2">Backend</p>
-              <div className="space-y-1 text-sm text-muted-foreground">
-                {(requirements.backend.length ? requirements.backend : ["Core APIs", "Admin panel"]).map((item, index) => <p key={`be-${index}`}>- {item}</p>)}
-              </div>
-            </div>
-            <div className="rounded-xl border border-border/50 bg-secondary/20 p-3">
-              <p className="text-sm font-medium text-foreground mb-2">Integrations</p>
-              <div className="space-y-1 text-sm text-muted-foreground">
-                {(requirements.integrations.length ? requirements.integrations : ["Payment gateway"]).map((item, index) => <p key={`int-${index}`}>- {item}</p>)}
-              </div>
-            </div>
-          </div>
-
-          <Button variant="outline" onClick={() => { saveMeetingData(requirements, meetingNotes); toast.success("Requirements saved"); }}>
-            Save Requirement Builder
-          </Button>
-        </GlassCard>
+        
 
         <p className="text-xs text-muted-foreground text-center">Viewing lead {id}</p>
       </div>

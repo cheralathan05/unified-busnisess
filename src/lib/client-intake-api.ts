@@ -294,7 +294,10 @@ export const regenerateLeadRequirements = async (leadId: string | number) => {
   );
 };
 
-export const lockLeadRequirements = async (leadId: string | number, payload: { password: string; confirmPassword: string; override?: boolean }) => {
+export const lockLeadRequirements = async (
+  leadId: string | number,
+  payload: { password: string; confirmPassword: string; override?: boolean; intake?: Partial<ClientIntakeForm> },
+) => {
   return request<{ leadId: string; locked: boolean; lockScore?: number; missing?: string[]; lockedAt?: string; lockedVersion?: number }>(
     `/requirements/${encodeURIComponent(String(leadId))}/lock`,
     {

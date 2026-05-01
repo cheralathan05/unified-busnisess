@@ -931,6 +931,7 @@ export default function RequirementsPage() {
         password: lockPassword,
         confirmPassword: lockConfirmPassword,
         override,
+        intake: selectedSubmission?.form,
       });
 
       const bundle = await fetchLeadRequirementBundle(selectedLead.id);
