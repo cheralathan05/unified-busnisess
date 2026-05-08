@@ -6,7 +6,9 @@ import {
   CheckCircle2,
   CircleDollarSign,
   FileUp,
+  Lock,
   Sparkles,
+  Unlock,
   WandSparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -932,13 +934,16 @@ export default function ClientIntake() {
                       if (isLocked) return;
                       setCurrentStep(stepNumber);
                     }}
-                    className={`rounded-lg border px-2 py-1.5 text-xs transition ${
+                    className={`flex items-center justify-center gap-2 rounded-lg border px-2 py-1.5 text-center text-xs transition-all duration-200 ease-in-out ${
                       isActive
-                        ? "border-cyan-200/60 bg-cyan-200/15 text-cyan-100"
-                        : "border-white/10 bg-white/5 text-white/60"
-                    } ${isLocked ? "cursor-not-allowed opacity-45" : "hover:text-white"}`}
+                        ? "border-cyan-300/80 bg-cyan-400/20 text-cyan-100 shadow-lg shadow-cyan-500/10"
+                        : isLocked
+                          ? "cursor-not-allowed border-white/10 bg-white/5 text-white/40 opacity-60"
+                          : "border-white/20 bg-white/10 text-white/70 hover:bg-white/20 hover:text-white"
+                    }`}
                   >
-                    {stepNumber}. {label}
+                    {isLocked ? <Lock className="h-3 w-3 flex-shrink-0" /> : <Unlock className="h-3 w-3 flex-shrink-0" />}
+                    <span className="truncate">{label}</span>
                   </button>
                 );
               })()
