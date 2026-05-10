@@ -654,30 +654,29 @@ router.post("/intake/ai/refine-description", async (req: Request, res: Response)
 
   try {
     const provider = getAIProvider();
+    const compactDescription = description.slice(0, 450);
+    const compactFeatures = features.slice(0, 6);
+    const compactModules = modules.slice(0, 5);
+    const compactRoles = userRoles.slice(0, 4);
+
     const prompt = [
-      "You are a senior product requirements analyst.",
-      "Rewrite the project description into a stronger, execution-ready scope.",
-      "Keep it concise but concrete.",
+      "You are a product requirements analyst.",
+      "Rewrite the project description into an execution-ready scope.",
       "Return plain text only.",
+      "Output exactly 2 short paragraphs:",
+      "1) Intent (1 sentence)",
+      "2) Refined Scope: objectives, roles, modules, integrations, milestones, KPIs",
+      "Keep total output under 120 words.",
       "",
-      `Business: ${businessName}`,
-      `Industry: ${industry}`,
-      `Contact: ${contactName}`,
-      `Project type: ${projectType}`,
+      `Project: ${projectType}`,
       `Goal: ${goal}`,
-      `Target audience: ${targetAudience}`,
-      `Budget: ${budget ? budget.toLocaleString("en-IN") : "Not specified"}`,
       `Deadline: ${deadline}`,
       `Priority: ${priority}`,
-      `Package: ${selectedPackage}`,
-      `User roles: ${userRoles.join(", ") || "Not specified"}`,
-      `Modules/pages: ${modules.join(", ") || "Not specified"}`,
-      `Core capabilities: ${features.join(", ") || "Not specified"}`,
-      `Current description: ${description}`,
-      "",
-      "Output format:",
-      "First keep the original intent in 1 sentence.",
-      "Then add a paragraph starting with 'Refined Scope:' and include objectives, user roles, modules/pages, API/integration expectations, milestones, and measurable launch KPIs.",
+      `Audience: ${targetAudience}`,
+      `Roles: ${compactRoles.join(", ") || "Not specified"}`,
+      `Modules: ${compactModules.join(", ") || "Not specified"}`,
+      `Features: ${compactFeatures.join(", ") || "Not specified"}`,
+      `Description: ${compactDescription}`,
     ].join("\n");
 
     const result = await provider.execute(prompt);
