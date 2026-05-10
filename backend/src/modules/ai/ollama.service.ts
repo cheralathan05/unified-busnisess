@@ -80,10 +80,15 @@ export class OllamaService {
       );
 
       for (const model of modelCandidates) {
+        const startedAt = Date.now();
         const result = await this.generateWithModel(model, prompt, timeoutMs);
         if (!result.timedOut && result.text.trim().length > 0 && result.text !== FALLBACK_TEXT) {
+          console.log(`[ollama] success model=${model} ms=${Date.now() - startedAt}`);
           return result;
         }
+        console.warn(
+          `[ollama] fallback model=${model} ms=${Date.now() - startedAt} timedOut=${result.timedOut} len=${result.text.length}`
+        );
       }
 
       return getFallbackResult(true);
@@ -113,6 +118,7 @@ export class OllamaService {
       });
 
       if (!res.ok) {
+        console.warn(`[ollama] http ${res.status} for model=${model}`);
         return getFallbackResult(false);
       }
 
@@ -123,8 +129,11 @@ export class OllamaService {
       };
     } catch (error: any) {
       if (error?.name === "AbortError") {
+        console.warn(`[ollama] timeout model=${model} timeoutMs=${timeoutMs}`);
         return getFallbackResult(true);
       }
+
+      console.warn(`[ollama] request error model=${model} message=${String(error?.message || "unknown")}`);
 
       return getFallbackResult(false);
     } finally {

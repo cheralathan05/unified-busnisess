@@ -22,6 +22,26 @@ class AIProvider {
   private readonly ollama: OllamaService;
   private readonly timeout: number;
 
+  private isOllamaFallbackText(text: string): boolean {
+    const normalized = String(text || "").trim();
+    if (!normalized) return true;
+
+    try {
+      const parsed = JSON.parse(normalized) as {
+        summary?: string;
+        nextAction?: string;
+        confidence?: number;
+      };
+      return (
+        String(parsed?.summary || "").toLowerCase() === "ai unavailable" &&
+        String(parsed?.nextAction || "").toLowerCase() === "wait" &&
+        Number(parsed?.confidence ?? -1) === 0
+      );
+    } catch {
+      return false;
+    }
+  }
+
   constructor(config: AIProviderConfig = {}) {
     this.ollama = new OllamaService();
     this.timeout = config.timeout || env.OLLAMA_TIMEOUT_MS;
@@ -35,12 +55,17 @@ class AIProvider {
         model: env.OLLAMA_MODEL_REASONING
       });
 
+      const text = String(response.text || "").trim();
+      if (response.timedOut || this.isOllamaFallbackText(text)) {
+        return null;
+      }
+
       return {
-        text: response.text,
+        text,
         provider: "ollama",
         model: env.OLLAMA_MODEL_REASONING,
         latency: Date.now() - start,
-        confidence: response.timedOut ? 0.3 : 0.85
+        confidence: 0.85
       };
     } catch (error) {
       console.warn("Ollama failed:", (error as Error).message);

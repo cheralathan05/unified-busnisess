@@ -1,3 +1,3 @@
-import Requirements from "./Requirements";
+import { RequirementsPage as Requirements } from "./Requirements";
 
 export default Requirements;

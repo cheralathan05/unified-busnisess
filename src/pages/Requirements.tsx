@@ -104,6 +104,10 @@ const FEATURE_LIBRARY: Record<FeatureCategory, string[]> = {
 
 const ROLE_PRESETS = ["Admin", "Customer", "Vendor", "Staff"];
 const MODULE_PRESETS = ["Home", "Dashboard", "Checkout", "Profile", "Settings", "Reports"];
+const PROJECT_TYPE_OPTIONS: ClientIntakeForm["projectType"][] = ["Website", "App", "AI", "CRM", "Other"];
+const PRIORITY_OPTIONS: ClientIntakeForm["priority"][] = ["low", "medium", "urgent"];
+const PACKAGE_OPTIONS: ClientIntakeForm["selectedPackage"][] = ["basic", "growth", "premium"];
+const COMPANY_SIZE_OPTIONS = ["1-5", "6-20", "21-50", "51-200", "200+"];
 
 const DEFAULT_INTAKE_FORM: ClientIntakeForm = {
   businessName: "",
@@ -132,13 +136,21 @@ const DEFAULT_INTAKE_FORM: ClientIntakeForm = {
 
 const buildScopeSeedDescription = (form: Partial<ClientIntakeForm>) => {
   const businessName = String(form.businessName ?? "").trim() || "the client";
+  const industry = String(form.industry ?? "").trim() || "their industry";
+  const contactName = String(form.contactName ?? "").trim() || "the key contact";
   const projectType = String(form.projectType ?? DEFAULT_INTAKE_FORM.projectType).toLowerCase();
   const goal = String(form.goal ?? "").trim() || "business growth";
+  const companySize = String(form.companySize ?? "").trim() || "unspecified team size";
+  const targetAudience = String(form.targetAudience ?? "").trim() || "end users";
+  const deadline = String(form.deadline ?? "").trim() || "the agreed launch window";
+  const budget = Number.isFinite(form.budget) ? formatCurrency(Number(form.budget)) : "an agreed project budget";
+  const priority = String(form.priority ?? DEFAULT_INTAKE_FORM.priority);
+  const packageLabel = String(form.selectedPackage ?? DEFAULT_INTAKE_FORM.selectedPackage);
   const roles = Array.isArray(form.userRoles) && form.userRoles.length ? form.userRoles.slice(0, 4).join(", ") : "Admin, Customer";
   const modules = Array.isArray(form.modules) && form.modules.length ? form.modules.slice(0, 5).join(", ") : "Dashboard, Profile, Settings";
   const features = Array.isArray(form.features) && form.features.length ? form.features.slice(0, 6).join(", ") : "Login/Auth, Analytics, API Integration";
 
-  return `Build a ${projectType} solution for ${businessName} focused on ${goal}. Primary users: ${roles}. Key pages: ${modules}. Core capabilities: ${features}. Include API contracts, milestones, and measurable launch KPIs.`;
+  return `Build a ${projectType} solution for ${businessName} in the ${industry} space, aligned with ${goal}. Key contact: ${contactName}. Company size: ${companySize}. Audience: ${targetAudience}. Priority: ${priority}. Package: ${packageLabel}. Budget: ${budget}. Deadline: ${deadline}. Primary users: ${roles}. Key pages: ${modules}. Core capabilities: ${features}. Include API contracts, milestones, launch plan, and measurable KPIs.`;
 };
 
 const normalizeIdeaDescription = (form: Partial<ClientIntakeForm>) => {
@@ -245,6 +257,11 @@ const estimateTimelineDays = (form: ClientIntakeForm) => {
 const computeRefinementCompleteness = (form: ClientIntakeForm) => {
   const checks = [
     Boolean(form.businessName),
+    Boolean(form.industry),
+    Boolean(form.contactName),
+    Boolean(form.email),
+    Boolean(form.phone),
+    Boolean(form.companySize),
     Boolean(form.goal),
     Boolean(form.projectType),
     Boolean(form.features.length),
@@ -252,6 +269,13 @@ const computeRefinementCompleteness = (form: ClientIntakeForm) => {
     Boolean(form.modules.length),
     Boolean(form.ideaDescription),
     Boolean(form.targetAudience),
+    Number(form.budget) > 0,
+    Boolean(form.deadline),
+    Boolean(form.priority),
+    Boolean(form.selectedPackage),
+    Boolean(form.meetingSlot),
+    Boolean(form.uploadedFiles.length),
+    Boolean(form.suggestionNotes.length),
   ];
   return Math.round((checks.filter(Boolean).length / checks.length) * 100);
 };
@@ -259,11 +283,23 @@ const computeRefinementCompleteness = (form: ClientIntakeForm) => {
 const buildValidationIssues = (form: ClientIntakeForm) => {
   const issues: string[] = [];
 
+  if (!form.businessName.trim()) issues.push("Missing business name");
+  if (!form.industry.trim()) issues.push("Missing industry context");
+  if (!form.contactName.trim()) issues.push("Missing contact person");
+  if (!form.email.trim()) issues.push("Missing contact email");
+  if (!form.phone.trim()) issues.push("Missing contact phone");
+  if (!form.companySize.trim()) issues.push("Missing company size");
   if (!form.goal.trim()) issues.push("Missing explicit product goal");
+  if (!form.targetAudience.trim()) issues.push("Missing target audience");
   if (!form.userRoles.length) issues.push("No user roles defined");
   if (!form.modules.length) issues.push("No modules/pages selected");
   if (!form.ideaDescription.trim()) issues.push("Description is empty");
+  if (!Number(form.budget) || Number(form.budget) <= 0) issues.push("Missing budget range");
+  if (!form.deadline.trim()) issues.push("No launch deadline provided");
+  if (!form.selectedPackage) issues.push("No package selected");
   if (!form.features.some((item) => /api|integration|payment/i.test(item))) issues.push("Missing API or integration details");
+  if (!form.meetingSlot.trim()) issues.push("No meeting slot selected");
+  if (!form.uploadedFiles.length) issues.push("No supporting files uploaded");
 
   return issues;
 };
@@ -271,15 +307,21 @@ const buildValidationIssues = (form: ClientIntakeForm) => {
 const buildRefinementSuggestions = (form: ClientIntakeForm, issues: string[]) => {
   const suggestions = new Set<string>();
   issues.forEach((issue) => {
+    if (/business|industry|contact/i.test(issue)) suggestions.add("Add the business context and stakeholder details");
     if (/roles/i.test(issue)) suggestions.add("Define Admin and Customer roles");
     if (/api|integration/i.test(issue)) suggestions.add("Add API Integration or Payment scope");
     if (/modules/i.test(issue)) suggestions.add("Add Dashboard and Profile modules");
     if (/goal/i.test(issue)) suggestions.add("Write one measurable business goal");
     if (/description/i.test(issue)) suggestions.add("Expand use-cases in description");
+    if (/budget|deadline|package/i.test(issue)) suggestions.add("Add delivery and commercial details");
   });
 
   if (form.features.includes("Payment") && !form.features.includes("Analytics")) {
     suggestions.add("Add Analytics to track payment conversion");
+  }
+
+  if (!form.suggestionNotes.length) {
+    suggestions.add("Capture any special constraints, approvals, or launch notes");
   }
 
   return Array.from(suggestions);
@@ -318,11 +360,14 @@ const buildGoalAlignment = (form: ClientIntakeForm) => {
 };
 
 const improveDescriptionDraft = (form: ClientIntakeForm) => {
+  const businessName = form.businessName || "the client";
+  const industry = form.industry || "their industry";
   const roleSummary = form.userRoles.length ? form.userRoles.join(", ") : "Admin and Customer";
   const moduleSummary = form.modules.length ? form.modules.join(", ") : "Dashboard and Profile";
   const featureSummary = form.features.length ? form.features.slice(0, 6).join(", ") : "Login/Auth and Analytics";
+  const commercialSummary = `${form.priority || "medium"} priority, ${form.selectedPackage || "growth"} package, ${formatCurrency(form.budget)} budget, deadline ${form.deadline || "to be defined"}`;
 
-  return `${buildScopeSeedDescription(form)}\n\nRefined Scope: Expand the ${form.projectType} build for ${form.businessName || "the client"} with stronger workflow detail, delivery sequencing, and launch metrics. Primary roles: ${roleSummary}. Key modules/pages: ${moduleSummary}. Core capabilities: ${featureSummary}. Include API contracts, milestones, and measurable launch KPIs.`.trim();
+  return `${buildScopeSeedDescription(form)}\n\nRefined Scope: Expand the ${form.projectType} build for ${businessName} in ${industry} with stronger workflow detail, delivery sequencing, and launch metrics. Primary roles: ${roleSummary}. Key modules/pages: ${moduleSummary}. Core capabilities: ${featureSummary}. Commercial context: ${commercialSummary}. Include API contracts, milestones, acceptance criteria, and measurable launch KPIs.`.trim();
 };
 
 const buildStudioSummary = (form: ClientIntakeForm, completeness: number, issues: string[]) => {
@@ -557,1693 +602,1217 @@ const getAssetTag = (file: { name: string; type?: string; isImage?: boolean }) =
   return "Reference";
 };
 
-export default function RequirementsPage() {
+export function RequirementsPage() {
   const navigate = useNavigate();
+  const [isAdmin, setIsAdmin] = useState(false);
   const [leads, setLeads] = useState<LeadRecord[]>(getLeads());
-  const [intakeSubmissions, setIntakeSubmissions] = useState<ClientIntakeSubmission[]>(
+  const [clientSubmissions, setClientSubmissions] = useState<ClientIntakeSubmission[]>(
     getClientIntakeSubmissions().map((item) => normalizeIntakeSubmission(item)),
   );
   const [search, setSearch] = useState("");
   const [selectedEntryKey, setSelectedEntryKey] = useState<string | null>(null);
   const [requirementBundle, setRequirementBundle] = useState<RequirementBundle | null>(null);
-  const [isEditStudioOpen, setIsEditStudioOpen] = useState(false);
-  const [isImprovingDescription, setIsImprovingDescription] = useState(false);
-  const [editDraft, setEditDraft] = useState<ClientIntakeForm | null>(null);
-  const [activeFeatureCategory, setActiveFeatureCategory] = useState<FeatureCategory>("Auth");
-  const [featureSearch, setFeatureSearch] = useState("");
-  const [customRole, setCustomRole] = useState("");
-  const [customModule, setCustomModule] = useState("");
-  const [versionTimeline, setVersionTimeline] = useState<RefinementVersion[]>([]);
-  const [isLockDialogOpen, setIsLockDialogOpen] = useState(false);
-  const [isUnlockDialogOpen, setIsUnlockDialogOpen] = useState(false);
-  const [lockPassword, setLockPassword] = useState("");
-  const [lockConfirmPassword, setLockConfirmPassword] = useState("");
-  const [lockOverride, setLockOverride] = useState(false);
-  const [lockDialogError, setLockDialogError] = useState<string | null>(null);
-  const [lockValidation, setLockValidation] = useState<RequirementLockValidation | null>(null);
-  const [isLockSubmitting, setIsLockSubmitting] = useState(false);
-  const [unlockPassword, setUnlockPassword] = useState("");
-  const [unlockOverride, setUnlockOverride] = useState(false);
-  const [unlockDialogError, setUnlockDialogError] = useState<string | null>(null);
-  const [isUnlockSubmitting, setIsUnlockSubmitting] = useState(false);
-  const currentSession = useMemo(() => getAuthSession(), []);
-  const isAdmin = currentSession?.role === "admin";
-
-  const normalizedSubmissions = useMemo(
-    () => intakeSubmissions.map((item) => normalizeIntakeSubmission(item)),
-    [intakeSubmissions],
-  );
-
-  const submittedEntries = useMemo(() => {
-    const leadMap = new Map<number, LeadRecord>(leads.map((lead) => [lead.id, lead]));
-    const groupedEntries = new Map<string, SubmittedLeadEntry>();
-
-    normalizedSubmissions
-      .sort((a, b) => b.submittedAt - a.submittedAt)
-      .forEach((submission) => {
-        const hasLinkedLead = typeof submission.leadId === "number";
-        const entryKey = hasLinkedLead ? `lead-${Number(submission.leadId)}` : `access-${submission.accessId}`;
-
-        if (!groupedEntries.has(entryKey)) {
-          const lead = hasLinkedLead
-            ? (leadMap.get(Number(submission.leadId)) ?? toFallbackLead(submission))
-            : toFallbackLead(submission);
-
-          groupedEntries.set(entryKey, {
-            key: entryKey,
-            lead,
-            submission,
-            hasLinkedLead,
-          });
-        }
-      });
-
-    return Array.from(groupedEntries.values())
-      .sort((a, b) => b.submission.submittedAt - a.submission.submittedAt);
-  }, [normalizedSubmissions, leads]);
-
-  const filteredEntries = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    if (!term) return submittedEntries;
-
-    return submittedEntries.filter(({ lead, submission }) => {
-      const leadName = String(lead.name ?? "").toLowerCase();
-      const leadCompany = String(lead.company ?? "").toLowerCase();
-      const leadEmail = String(lead.email ?? "").toLowerCase();
-      const submissionEmail = String(submission.form.email ?? "").toLowerCase();
-      const submissionBusiness = String(submission.form.businessName ?? "").toLowerCase();
-
-      return (
-        leadName.includes(term) ||
-        leadCompany.includes(term) ||
-        leadEmail.includes(term) ||
-        submissionEmail.includes(term) ||
-        submissionBusiness.includes(term)
-      );
-    });
-  }, [search, submittedEntries]);
-
-  const selectedEntry = useMemo(
-    () => filteredEntries.find((entry) => entry.key === selectedEntryKey) ?? null,
-    [filteredEntries, selectedEntryKey],
-  );
-
-  const selectedSubmission = selectedEntry?.submission ?? null;
-  const selectedDisplayLead = selectedEntry?.lead ?? null;
-  const selectedLead = selectedEntry?.hasLinkedLead ? selectedEntry.lead : null;
-  const hasLinkedLead = Boolean(selectedLead);
-  const lifecycleStatus = getLifecycleStatus(requirementBundle, Boolean(selectedSubmission));
-  const studioLocked = lifecycleStatus === "locked";
-  const lockSnapshot = requirementBundle?.requirements?.lock ?? null;
-
-  const completeness = useMemo(
-    () => (selectedSubmission ? computeCompleteness(selectedSubmission, requirementBundle) : { percent: 0, missing: [] }),
-    [selectedSubmission, requirementBundle],
-  );
-
-  const requirementBreakdown = useMemo(
-    () => (selectedSubmission ? buildRequirementBreakdown(selectedSubmission, requirementBundle) : []),
-    [selectedSubmission, requirementBundle],
-  );
-
-  const pipeline = useMemo(
-    () => buildPipeline(lifecycleStatus, completeness.percent),
-    [lifecycleStatus, completeness.percent],
-  );
-
-  const aiSummary = requirementBundle?.requirements?.summary || selectedSubmission?.aiSummary || "No AI summary available yet.";
-  const lastUpdated = requirementBundle?.requirements?.updatedAt || selectedSubmission?.submittedAt;
-  const aiConfidence = Math.max(55, Math.min(98, completeness.percent + (lifecycleStatus === "verified" ? 10 : 4)));
-  const lockScore = lockSnapshot?.lockScore ?? Math.max(0, Math.min(100, completeness.percent + 8 - completeness.missing.length * 4));
-  const lockMissing = lockSnapshot?.lockMissing?.length ? lockSnapshot.lockMissing : completeness.missing.slice(0, 4);
-  const readyToLock = lockSnapshot?.readyToLock ?? (completeness.percent >= 85 && lockMissing.length === 0);
-  const finalVersion = lockSnapshot?.lockedVersion ?? requirementBundle?.requirements?.version ?? 1;
-  const accessRecord = useMemo(() => (selectedLead ? createOrGetClientAccessByLead(selectedLead) : null), [selectedLead]);
-
-  const draftForm = useMemo(() => {
-    if (editDraft) return normalizeIntakeForm(editDraft);
-    if (selectedSubmission?.form) return normalizeIntakeForm(selectedSubmission.form);
-    return null;
-  }, [editDraft, selectedSubmission]);
-
-  const studioIssues = useMemo(() => (draftForm ? buildValidationIssues(draftForm) : []), [draftForm]);
-
-  const studioSuggestions = useMemo(
-    () => (draftForm ? buildRefinementSuggestions(draftForm, studioIssues) : []),
-    [draftForm, studioIssues],
-  );
-
-  const studioCompleteness = useMemo(() => (draftForm ? computeRefinementCompleteness(draftForm) : 0), [draftForm]);
-
-  const studioTaskPreview = useMemo(() => (draftForm ? buildTaskPreview(draftForm) : { frontend: [], backend: [] }), [draftForm]);
-
-  const studioGoalChecks = useMemo(() => (draftForm ? buildGoalAlignment(draftForm) : []), [draftForm]);
-
-  const studioImpact = useMemo(() => {
-    if (!selectedSubmission || !draftForm) {
-      return {
-        baseBudget: 0,
-        nextBudget: 0,
-        baseTimeline: 0,
-        nextTimeline: 0,
-        baseComplexity: "Low",
-        nextComplexity: "Low",
-      };
-    }
-
-    const baseBudget = estimateRefinedBudget(selectedSubmission.form);
-    const nextBudget = estimateRefinedBudget(draftForm);
-    const baseTimeline = estimateTimelineDays(selectedSubmission.form);
-    const nextTimeline = estimateTimelineDays(draftForm);
-    const baseComplexity = toComplexityLabel(estimateComplexityScore(selectedSubmission.form));
-    const nextComplexity = toComplexityLabel(estimateComplexityScore(draftForm));
-
-    return { baseBudget, nextBudget, baseTimeline, nextTimeline, baseComplexity, nextComplexity };
-  }, [draftForm, selectedSubmission]);
-
-  const studioChanges = useMemo(() => {
-    if (!selectedSubmission || !draftForm) return [];
-
-    const formatList = (values: string[]) => (values.length ? values.join(", ") : "Not defined");
-    const rows = [
-      {
-        key: "Goal",
-        before: selectedSubmission.form.goal || "Not defined",
-        after: draftForm.goal || "Not defined",
-      },
-      {
-        key: "Project Type",
-        before: selectedSubmission.form.projectType,
-        after: draftForm.projectType,
-      },
-      {
-        key: "Features",
-        before: formatList(selectedSubmission.form.features),
-        after: formatList(draftForm.features),
-      },
-      {
-        key: "User Roles",
-        before: formatList(selectedSubmission.form.userRoles),
-        after: formatList(draftForm.userRoles),
-      },
-      {
-        key: "Modules / Pages",
-        before: formatList(selectedSubmission.form.modules),
-        after: formatList(draftForm.modules),
-      },
-      {
-        key: "Description",
-        before: selectedSubmission.form.ideaDescription || "Not defined",
-        after: draftForm.ideaDescription || "Not defined",
-      },
-    ];
-
-    return rows.filter((row) => row.before !== row.after);
-  }, [draftForm, selectedSubmission]);
+  const [isRefining, setIsRefining] = useState(false);
+  const [refinementForm, setRefinementForm] = useState<ClientIntakeForm>(cloneForm(null));
+  const [refinementVersions, setRefinementVersions] = useState<RefinementVersionStore>(getVersionStore());
+  const [isLocking, setIsLocking] = useState(false);
+  const [isUnlocking, setIsUnlocking] = useState(false);
+  const [password, setPassword] = useState("");
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const queryLeadId = Number(params.get("leadId"));
-
-    if (Number.isFinite(queryLeadId)) {
-      const matchedByLead = submittedEntries.find((entry) => entry.hasLinkedLead && entry.lead.id === queryLeadId);
-      if (matchedByLead) {
-        setSelectedEntryKey(matchedByLead.key);
-        return;
-      }
-    }
-
-    if (!submittedEntries.length) {
-      setSelectedEntryKey(null);
-      return;
-    }
-
-    setSelectedEntryKey((current) => {
-      if (current && submittedEntries.some((entry) => entry.key === current)) {
-        return current;
-      }
-      return submittedEntries[0].key;
-    });
-  }, [submittedEntries]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const hydrate = async () => {
-      const backend = await fetchBackendClientIntakeSubmissions();
-      if (cancelled || !backend.length) return;
-
-      setIntakeSubmissions((current) => {
-        const merged = [...backend, ...current].map((item) => normalizeIntakeSubmission(item));
-        const uniqueByScope = new Map<string, ClientIntakeSubmission>();
-
-        merged
-          .sort((a, b) => b.submittedAt - a.submittedAt)
-          .forEach((item) => {
-            const key = typeof item.leadId === "number" ? `lead-${item.leadId}` : `access-${item.accessId}`;
-            if (!uniqueByScope.has(key)) {
-              uniqueByScope.set(key, item);
-            }
-          });
-
-        return Array.from(uniqueByScope.values());
-      });
-
-      setLeads(getLeads());
+    const checkAuth = async () => {
+      const session = await getAuthSession();
+      setIsAdmin(session?.role === "admin");
     };
-
-    void hydrate();
-
-    return () => {
-      cancelled = true;
-    };
+    checkAuth();
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
+    const loadData = async () => {
+      const [loadedLeads, localSubmissions, backendSubmissions] = await Promise.all([
+        getLeads(),
+        getClientIntakeSubmissions(),
+        fetchBackendClientIntakeSubmissions(),
+      ]);
 
-    const loadBundle = async () => {
-      if (!selectedLead) {
-        setRequirementBundle(null);
-        return;
-      }
+      setLeads(loadedLeads);
 
-      try {
-        const bundle = await fetchLeadRequirementBundle(selectedLead.id);
-        if (!cancelled) setRequirementBundle(bundle);
-      } catch {
-        if (!cancelled) setRequirementBundle(null);
-      }
+      const submissionMap = new Map<string, ClientIntakeSubmission>();
+      [...localSubmissions, ...backendSubmissions].forEach((sub) => {
+        const normalized = normalizeIntakeSubmission(sub);
+        if (!submissionMap.has(normalized.id)) {
+          submissionMap.set(normalized.id, normalized);
+        }
+      });
+      setClientSubmissions(Array.from(submissionMap.values()));
     };
 
-    void loadBundle();
+    loadData();
+  }, []);
 
-    return () => {
-      cancelled = true;
+  const submittedEntries = useMemo<SubmittedLeadEntry[]>(() => {
+    const leadMap = new Map<number, LeadRecord>();
+    leads.forEach((lead) => lead.id && leadMap.set(lead.id, lead));
+
+    return clientSubmissions
+      .map((submission) => {
+        const lead = submission.leadId ? leadMap.get(submission.leadId) : undefined;
+        const hasLinkedLead = Boolean(lead);
+        const displayLead = lead || toFallbackLead(submission);
+        return {
+          key: `${displayLead.id}-${submission.id}`,
+          lead,
+          submission,
+          hasLinkedLead,
+        };
+      })
+      .sort((a, b) => b.submission.submittedAt - a.submission.submittedAt);
+  }, [leads, clientSubmissions]);
+
+  const filteredEntries = useMemo(() => {
+    if (!search) return submittedEntries;
+    const q = search.toLowerCase();
+    return submittedEntries.filter(({ lead, submission }) => {
+      return (
+        lead.company?.toLowerCase().includes(q) ||
+        lead.email?.toLowerCase().includes(q) ||
+        submission.form.businessName?.toLowerCase().includes(q) ||
+        submission.form.email?.toLowerCase().includes(q)
+      );
+    });
+  }, [submittedEntries, search]);
+
+  const {
+    selectedSubmission,
+    selectedLead,
+    selectedDisplayLead,
+    hasLinkedLead,
+  } = useMemo(() => {
+    const entry = submittedEntries.find((item) => item.key === selectedEntryKey);
+    if (!entry) return { selectedSubmission: null, selectedLead: null, selectedDisplayLead: null, hasLinkedLead: false, accessRecord: null };
+
+    const { submission, lead, hasLinkedLead } = entry;
+    return {
+      selectedSubmission: submission,
+      selectedLead: hasLinkedLead ? lead : null,
+      selectedDisplayLead: lead,
+      hasLinkedLead,
     };
-  }, [selectedLead]);
+  }, [selectedEntryKey, submittedEntries, requirementBundle]);
 
-  useEffect(() => {
-    if (!selectedSubmission) {
-      setEditDraft(null);
-      setVersionTimeline([]);
-      return;
-    }
+  const lifecycleStatus = getLifecycleStatus(requirementBundle, Boolean(selectedSubmission));
+  const studioLocked = lifecycleStatus === "locked";
+  const lockSnapshot = requirementBundle?.requirements?.lock;
 
-    setEditDraft(cloneForm(selectedSubmission.form));
+  const lastUpdated = useMemo(() => {
+    if (!selectedSubmission) return Date.now();
+    const bundleUpdate = requirementBundle?.requirements?.updatedAt;
+    const submissionUpdate = selectedSubmission.submittedAt;
+    return Math.max(Number(bundleUpdate) || 0, submissionUpdate || 0);
+  }, [selectedSubmission, requirementBundle]);
 
-    const store = getVersionStore();
-    const versionKey = selectedEntry?.hasLinkedLead && selectedLead ? String(selectedLead.id) : `access-${selectedSubmission.accessId}`;
-    const existingTimeline = store[versionKey];
+  const aiConfidence = useMemo(() => {
+    if (!requirementBundle?.requirements) return 60;
+    const conf = Number((requirementBundle.requirements.analysis as any)?.confidence ?? 0);
+    return conf > 0 ? Math.round(conf * 100) : 60;
+  }, [requirementBundle]);
 
-    if (existingTimeline?.length) {
-      setVersionTimeline(existingTimeline);
-      return;
-    }
+  const draftCompleteness = useMemo(() => computeRefinementCompleteness(refinementForm), [refinementForm]);
+  const draftIssues = useMemo(() => buildValidationIssues(refinementForm), [refinementForm]);
+  const draftSuggestions = useMemo(() => buildRefinementSuggestions(refinementForm, draftIssues), [draftIssues, refinementForm]);
 
-    const initialVersion: RefinementVersion = {
-      id: selectedSubmission.id,
-      label: "v1 Client",
-      editedAt: selectedSubmission.submittedAt,
-      summary: selectedSubmission.form.goal || selectedSubmission.form.ideaDescription || "Initial client submission",
+  const aiSummary = useMemo(() => {
+    if (!selectedSubmission) return "";
+    const bundleSummary = requirementBundle?.requirements?.summary;
+    if (bundleSummary && !/^AI unavailable/i.test(bundleSummary)) return bundleSummary;
+    return selectedSubmission.aiSummary || "AI summary not available. Regenerate to create one.";
+  }, [selectedSubmission, requirementBundle]);
+
+  const requirementBreakdown = useMemo(() => {
+    if (!selectedSubmission) return [];
+    return buildRequirementBreakdown(selectedSubmission, requirementBundle);
+  }, [selectedSubmission, requirementBundle]);
+
+  const completeness = useMemo(() => {
+    if (!selectedSubmission) return { percent: 0, missing: [] };
+    return computeCompleteness(selectedSubmission, requirementBundle);
+  }, [selectedSubmission, requirementBundle]);
+
+  const { lockScore, readyToLock, missing: lockMissing } = useMemo((): RequirementLockValidation => {
+    if (!selectedSubmission) return { lockScore: 0, readyToLock: false, missing: ["No submission"], completionPercent: 0 };
+
+    const missing: string[] = [];
+    if (completeness.percent < 80) missing.push("Low completeness score");
+    if (aiConfidence < 75) missing.push("Low AI confidence");
+    if (!hasLinkedLead) missing.push("Not linked to a lead");
+    if (!requirementBundle?.requirements?.items?.length) missing.push("No requirement items");
+
+    const score = Math.max(0, 100 - missing.length * 25 - (100 - completeness.percent) / 2 - (100 - aiConfidence) / 4);
+
+    return {
+      lockScore: Math.round(score),
+      readyToLock: score >= 70,
+      missing,
+      completionPercent: completeness.percent,
     };
+  }, [selectedSubmission, completeness, aiConfidence, hasLinkedLead, requirementBundle]);
 
-    store[versionKey] = [initialVersion];
-    saveVersionStore(store);
-    setVersionTimeline([initialVersion]);
-  }, [selectedEntry, selectedLead, selectedSubmission]);
+  const finalVersion = useMemo(() => {
+    if (!selectedLead) return 1;
+    const versions = refinementVersions[selectedLead.id] ?? [];
+    return versions.length + 1;
+  }, [selectedLead, refinementVersions]);
 
-  const handleSelectEntry = (entry: SubmittedLeadEntry) => {
+  const pipeline = useMemo((): PipelineStage[] => {
+    const base: PipelineStage[] = [
+      { key: "design", label: "Design", status: "locked", progress: 0 },
+      { key: "frontend", label: "Frontend", status: "locked", progress: 0 },
+      { key: "backend", label: "Backend", status: "locked", progress: 0 },
+      { key: "testing", label: "Testing", status: "locked", progress: 0 },
+    ];
+
+    if (!selectedSubmission) return base;
+
+    const status = lifecycleStatus;
+    if (status === "pending") return base;
+
+    base[0] = { key: "design", label: "Design", status: "in-progress", progress: 75 };
+    if (status === "submitted") return base;
+
+    base[0] = { key: "design", label: "Design", status: "done", progress: 100 };
+    base[1] = { key: "frontend", label: "Frontend", status: "in-progress", progress: 40 };
+    if (status === "verified") return base;
+
+    base[1] = { key: "frontend", label: "Frontend", status: "done", progress: 100 };
+    base[2] = { key: "backend", label: "Backend", status: "in-progress", progress: 15 };
+    if (status === "locked") return base;
+
+    return base;
+  }, [selectedSubmission, lifecycleStatus]);
+
+  const handleSelectEntry = async (entry: SubmittedLeadEntry) => {
     setSelectedEntryKey(entry.key);
-    const url = new URL(window.location.href);
+    setRequirementBundle(null);
 
     if (entry.hasLinkedLead) {
-      url.searchParams.set("leadId", String(entry.lead.id));
+      const bundle = await fetchLeadRequirementBundle(entry.lead.id);
+      setRequirementBundle(bundle);
     } else {
-      url.searchParams.delete("leadId");
+      const access = await createOrGetClientAccessByLead(entry.lead);
+      setRequirementBundle({
+        access,
+        lead: entry.lead,
+        intake: entry.submission,
+        requirements: null,
+        meeting: null,
+      } as unknown as RequirementBundle);
     }
-
-    window.history.replaceState({}, "", `${url.pathname}${url.search}`);
-  };
-
-  const handleRegenerate = async () => {
-    if (!selectedLead) return;
-    await regenerateLeadRequirements(selectedLead.id);
-    const bundle = await fetchLeadRequirementBundle(selectedLead.id);
-    setRequirementBundle(bundle);
-    toast.success("AI requirement summary regenerated");
-  };
-
-  const handleLock = async () => {
-    if (!selectedLead) return;
-
-    setLockDialogError(null);
-    setLockValidation({
-      missing: lockMissing,
-      lockScore,
-      readyToLock,
-      completionPercent: completeness.percent,
-    });
-    setLockPassword("");
-    setLockConfirmPassword("");
-    setLockOverride(false);
-    setIsLockDialogOpen(true);
-  };
-
-  const submitLock = async (override = false) => {
-    if (!selectedLead) return;
-
-    if (!/^\d{4}$/.test(lockPassword)) {
-      setLockDialogError("Lock password must be a 4-digit code");
-      return;
-    }
-
-    if (lockPassword !== lockConfirmPassword) {
-      setLockDialogError("Passwords do not match");
-      return;
-    }
-
-    setIsLockSubmitting(true);
-    setLockDialogError(null);
-
-    try {
-      await lockLeadRequirements(selectedLead.id, {
-        password: lockPassword,
-        confirmPassword: lockConfirmPassword,
-        override,
-        intake: selectedSubmission?.form,
-      });
-
-      const bundle = await fetchLeadRequirementBundle(selectedLead.id);
-      setRequirementBundle(bundle);
-      setIsLockDialogOpen(false);
-      setLockPassword("");
-      setLockConfirmPassword("");
-      setLockOverride(false);
-      toast.success("Requirement locked and version frozen");
-    } catch (error) {
-      const apiError = error as { status?: number; details?: any; message?: string };
-      if (apiError.status === 409 && apiError.details) {
-        setLockValidation({
-          missing: Array.isArray(apiError.details.missing) ? apiError.details.missing : lockMissing,
-          lockScore: Number(apiError.details.lockScore ?? lockScore),
-          readyToLock: Boolean(apiError.details.readyToLock),
-          completionPercent: Number(apiError.details.completionPercent ?? completeness.percent),
-        });
-        setLockDialogError("Review the missing items or enable override to continue.");
-        setLockOverride(true);
-        return;
-      }
-
-      setLockDialogError(apiError.message || "Failed to lock requirement");
-        console.error("Lock error:", { error, selectedLeadId: selectedLead?.id, status: apiError.status });
-      
-        if (apiError.status === 404) {
-          console.error("Requirement not found for leadId:", selectedLead?.id);
-          setLockDialogError("Requirement not found. Please refresh and try again.");
-        }
-      } finally {
-      setIsLockSubmitting(false);
-    }
-  };
-
-  const handleUnlock = async () => {
-    if (!selectedLead) return;
-
-    setUnlockDialogError(null);
-    setUnlockPassword("");
-    setUnlockOverride(false);
-    setIsUnlockDialogOpen(true);
-  };
-
-  const submitUnlock = async (override = false) => {
-    if (!selectedLead) return;
-
-    if (!override && !unlockPassword) {
-      setUnlockDialogError("Password is required");
-      return;
-    }
-
-    setIsUnlockSubmitting(true);
-    setUnlockDialogError(null);
-
-    try {
-      await unlockLeadRequirements(selectedLead.id, override ? { override: true } : { password: unlockPassword });
-      const bundle = await fetchLeadRequirementBundle(selectedLead.id);
-      setRequirementBundle(bundle);
-      setIsUnlockDialogOpen(false);
-      setUnlockPassword("");
-      setUnlockOverride(false);
-      toast.success(override ? "Requirement unlocked by admin" : "Requirement unlocked");
-    } catch (error) {
-      const apiError = error as { status?: number; details?: any; message?: string };
-      if (apiError.status === 401 && apiError.details) {
-        setUnlockDialogError(
-          `Incorrect password. ${Number(apiError.details.failedAttempts ?? 0)}/${Number(apiError.details.maxAttempts ?? 3)} attempts used.`,
-        );
-        return;
-      }
-
-      if (apiError.status === 423 && apiError.details?.blockedUntil) {
-        setUnlockDialogError("Unlock is temporarily blocked after repeated failed attempts.");
-        return;
-      }
-
-      setUnlockDialogError(apiError.message || "Failed to unlock requirement");
-    } finally {
-      setIsUnlockSubmitting(false);
-    }
-  };
-
-  const handleResendLink = async () => {
-    if (!selectedLead) return;
-    await resendClientLink({
-      leadId: String(selectedLead.id),
-      name: selectedLead.name,
-      company: selectedLead.company,
-      email: selectedLead.email,
-    });
-    toast.success("Client link resent");
-  };
-
-  const updateDraftField = <K extends keyof ClientIntakeForm>(key: K, value: ClientIntakeForm[K]) => {
-    setEditDraft((current) => {
-      if (!current) return current;
-      return { ...current, [key]: value };
-    });
-  };
-
-  const toggleDraftChip = (key: "features" | "userRoles" | "modules", value: string) => {
-    setEditDraft((current) => {
-      if (!current) return current;
-      const exists = current[key].includes(value);
-      const nextValues = exists ? current[key].filter((item) => item !== value) : [...current[key], value];
-      return { ...current, [key]: nextValues };
-    });
-  };
-
-  const addDraftChip = (key: "userRoles" | "modules", value: string) => {
-    const cleanValue = value.trim();
-    if (!cleanValue) return;
-    setEditDraft((current) => {
-      if (!current) return current;
-      if (current[key].includes(cleanValue)) return current;
-      return { ...current, [key]: [...current[key], cleanValue] };
-    });
   };
 
   const handleOpenEditStudio = () => {
     if (!selectedSubmission) return;
-    setEditDraft(cloneForm(selectedSubmission.form));
-    setFeatureSearch("");
-    setCustomRole("");
-    setCustomModule("");
-    setIsEditStudioOpen(true);
+    setRefinementForm(cloneForm(selectedSubmission.form));
+    setIsRefining(true);
   };
 
-  const handleCancelStudio = () => {
-    if (selectedSubmission) {
-      setEditDraft(cloneForm(selectedSubmission.form));
+  const handleSaveRefinement = async () => {
+    if (!selectedSubmission || !selectedLead) return;
+    const liveCompleteness = computeRefinementCompleteness(refinementForm);
+    const liveIssues = buildValidationIssues(refinementForm);
+
+    const updatedSubmission: ClientIntakeSubmission = {
+      ...selectedSubmission,
+      form: refinementForm,
+    };
+
+    await updateClientIntakeSubmission({ submissionId: updatedSubmission.id, form: updatedSubmission.form, aiSummary: updatedSubmission.aiSummary });
+
+    const newVersion: RefinementVersion = {
+      id: `v${finalVersion}`,
+      label: `Version ${finalVersion}`,
+      editedAt: Date.now(),
+      summary: buildStudioSummary(refinementForm, liveCompleteness, liveIssues),
+    };
+
+    const updatedVersions = { ...refinementVersions };
+    const leadVersions = updatedVersions[selectedLead.id] ?? [];
+    leadVersions.push(newVersion);
+    updatedVersions[selectedLead.id] = leadVersions;
+    setRefinementVersions(updatedVersions);
+    saveVersionStore(updatedVersions);
+
+    setClientSubmissions((prev) => prev.map((s) => (s.id === updatedSubmission.id ? updatedSubmission : s)));
+    setIsRefining(false);
+    toast.success("Requirement saved", { description: `Version ${finalVersion} is now active.` });
+  };
+
+  const handleRegenerate = async () => {
+    if (!selectedLead) return;
+    const leadId = selectedLead.id;
+    toast.info("Regenerating AI analysis...", { description: "This may take a moment." });
+    await regenerateLeadRequirements(leadId);
+    const bundle = await fetchLeadRequirementBundle(leadId);
+    setRequirementBundle(bundle);
+    toast.success("AI analysis complete", { description: "Requirement bundle has been updated." });
+  };
+
+  const handleLock = async () => {
+    if (!selectedLead || !readyToLock) return;
+    setIsLocking(true);
+  };
+
+  const handleConfirmLock = async () => {
+    if (!selectedLead || !password) return;
+    const leadId = selectedLead.id;
+    toast.info("Locking requirement...", { description: "Securing final version." });
+    try {
+      await lockLeadRequirements(leadId, { password, confirmPassword: password });
+      const bundle = await fetchLeadRequirementBundle(leadId);
+      setRequirementBundle(bundle);
+      toast.success("Requirement locked", { description: `Version ${finalVersion} is secured.` });
+    } catch (err) {
+      toast.error("Lock failed", { description: (err as Error).message });
+    } finally {
+      setIsLocking(false);
+      setPassword("");
     }
-    setIsEditStudioOpen(false);
   };
 
-  const handleImproveDescription = async () => {
-    if (!draftForm || studioLocked) return;
+  const handleUnlock = async () => {
+    if (!selectedLead || !isAdmin) return;
+    setIsUnlocking(true);
+  };
 
-    setIsImprovingDescription(true);
-    const localFallback = improveDescriptionDraft(draftForm);
+  const handleConfirmUnlock = async () => {
+    if (!selectedLead || !password) return;
+    const leadId = selectedLead.id;
+    toast.info("Unlocking requirement...", { description: "Authenticating..." });
+    try {
+      await unlockLeadRequirements(leadId, { password });
+      const bundle = await fetchLeadRequirementBundle(leadId);
+      setRequirementBundle(bundle);
+      toast.success("Requirement unlocked", { description: "You can now edit the requirement." });
+    } catch (err) {
+      toast.error("Unlock failed", { description: (err as Error).message });
+    } finally {
+      setIsUnlocking(false);
+      setPassword("");
+    }
+  };
+
+  const handleConvertToProject = async () => {
+    if (!selectedLead) return;
+    toast.info("Converting to project...", { description: "This may take a moment." });
+    try {
+      await createProjectFromLead(selectedLead);
+      toast.success("Project created", { description: "Find it in the Projects dashboard." });
+      navigate("/projects");
+    } catch (err) {
+      toast.error("Conversion failed", { description: (err as Error).message });
+    }
+  };
+
+  const handleGenerateTasks = async () => {
+    if (!selectedLead) return;
+    toast.info("Task generation not implemented", { description: "This feature is coming soon." });
+  };
+
+  const handleResendLink = async () => {
+    if (!selectedLead) return;
+    toast.info("Resending client link...", { description: "This may take a moment." });
+    try {
+      await resendClientLink({ leadId: String(selectedLead.id), name: selectedLead.name, company: selectedLead.company, email: selectedLead.email });
+      toast.success("Link sent", { description: `A new link has been sent to ${selectedLead.email}.` });
+    } catch (err) {
+      toast.error("Failed to send link", { description: (err as Error).message });
+    }
+  };
+
+  const handleRefineWithAI = async () => {
+    const originalDescription = refinementForm.ideaDescription;
+    const draft = improveDescriptionDraft(refinementForm);
 
     try {
-      const result = await refineIntakeDescriptionWithAI({
-        businessName: draftForm.businessName,
-        projectType: draftForm.projectType,
-        goal: draftForm.goal,
-        description: draftForm.ideaDescription,
-        userRoles: draftForm.userRoles,
-        modules: draftForm.modules,
-        features: draftForm.features,
+      const refined = await refineIntakeDescriptionWithAI({
+        description: draft,
+        businessName: refinementForm.businessName,
+        industry: refinementForm.industry,
+        contactName: refinementForm.contactName,
+        projectType: refinementForm.projectType,
+        goal: refinementForm.goal,
+        targetAudience: refinementForm.targetAudience,
+        userRoles: refinementForm.userRoles,
+        modules: refinementForm.modules,
+        features: refinementForm.features,
+        budget: refinementForm.budget,
+        deadline: refinementForm.deadline,
+        priority: refinementForm.priority,
+        selectedPackage: refinementForm.selectedPackage,
       });
-
-      const refined = normalizeIdeaDescription({ ...draftForm, ideaDescription: String(result?.description || "") }) || localFallback;
-
-      updateDraftField("ideaDescription", refined);
-      toast.success("Scope rewritten with AI");
-    } catch (error) {
-      console.error("AI description refinement failed:", error);
-      updateDraftField("ideaDescription", localFallback);
-      toast("Live AI was unavailable, so a premium local rewrite was applied.");
-    } finally {
-      setIsImprovingDescription(false);
+      setRefinementForm((prev) => ({ ...prev, ideaDescription: String((refined as any).description ?? refined).trim() }));
+      toast.success("AI refinement complete");
+    } catch {
+      setRefinementForm((prev) => ({ ...prev, ideaDescription: originalDescription }));
+      toast.error("AI refinement failed");
     }
   };
 
-  const handleAutoFixStudio = () => {
-    if (!draftForm || studioLocked) return;
-
-    setEditDraft((current) => {
-      if (!current) return current;
-      const next = cloneForm(current);
-
-      if (!next.goal.trim()) {
-        next.goal = `Increase growth through ${next.projectType.toLowerCase()} launch`;
-      }
-      if (!next.userRoles.length) {
-        next.userRoles = ["Admin", "Customer"];
-      }
-      if (!next.modules.length) {
-        next.modules = ["Home", "Dashboard", "Profile"];
-      }
-      if (!next.features.some((item) => /api|integration/i.test(item))) {
-        next.features = [...next.features, "API Integration"];
-      }
-      if (!next.targetAudience.trim()) {
-        next.targetAudience = next.userRoles.join(" + ");
-      }
-
-      return next;
-    });
-
-    toast.success("Smart auto-fix applied");
+  const inferUsers = (submission: ClientIntakeSubmission) => {
+    if (submission.form.userRoles.length) return submission.form.userRoles.join(", ");
+    if (submission.form.targetAudience) return submission.form.targetAudience;
+    return "General users";
   };
 
-  const persistVersionTimeline = (versions: RefinementVersion[]) => {
-    if (!selectedSubmission) return;
-    const store = getVersionStore();
-    const versionKey = selectedEntry?.hasLinkedLead && selectedLead ? String(selectedLead.id) : `access-${selectedSubmission.accessId}`;
-    store[versionKey] = versions;
-    saveVersionStore(store);
-    setVersionTimeline(versions);
-  };
-
-  const handleSaveStudio = async (asNewVersion: boolean) => {
-    if (!selectedSubmission || !draftForm) return;
-
-    const summary = buildStudioSummary(draftForm, studioCompleteness, studioIssues);
-    const updated = updateClientIntakeSubmission({
-      submissionId: selectedSubmission.id,
-      form: draftForm,
-      aiSummary: summary,
-      asNewVersion,
-    });
-
-    if (!updated) {
-      toast.error("Failed to save refinement changes");
-      return;
-    }
-
-    const nextVersions = [
-      ...versionTimeline,
-      {
-        id: updated.id,
-        label: `v${versionTimeline.length + 1} ${asNewVersion ? "Current" : "Edited"}`,
-        editedAt: updated.submittedAt,
-        summary: updated.form.goal || "Scope refined",
-      },
-    ];
-
-    persistVersionTimeline(nextVersions);
-    setLeads(getLeads());
-    setIntakeSubmissions(getClientIntakeSubmissions());
-
-    if (selectedLead) {
-      try {
-        const bundle = await fetchLeadRequirementBundle(selectedLead.id);
-        setRequirementBundle(bundle);
-      } catch {
-        setRequirementBundle(null);
-      }
-    }
-
-    setIsEditStudioOpen(false);
-    toast.success(asNewVersion ? "Saved as new requirement version" : "Requirement changes saved");
-  };
-
-  const handleGenerateTasks = () => {
-    if (!selectedLead) return;
-    const project = createProjectFromLead(selectedLead);
-    toast.success("Tasks generated from requirement");
-    navigate(`/project/${project.id}`);
-  };
-
-  const handleConvertToProject = () => {
-    if (!selectedLead) return;
-    const project = createProjectFromLead(selectedLead);
-    toast.success("Requirement converted to project");
-    navigate(`/project/${project.id}`);
+  const inferPriorityNarrative = (submission: ClientIntakeSubmission) => {
+    const priority = submission.form.priority;
+    if (priority === "urgent") return "Urgent launch to capture market opportunity";
+    if (priority === "low") return "Exploratory build, flexible timeline";
+    return "Standard development cycle, balancing speed and quality";
   };
 
   return (
     <DashboardLayout>
-      <div className="relative mx-auto max-w-7xl space-y-6 overflow-hidden pb-14">
-        <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-cyan-500/10 blur-3xl" />
-        <div className="pointer-events-none absolute -right-24 top-48 h-72 w-72 rounded-full bg-amber-500/10 blur-3xl" />
-        {!submittedEntries.length ? (
-          <section className="rounded-3xl border border-white/10 bg-[linear-gradient(145deg,rgba(11,20,39,0.95),rgba(6,13,27,0.9))] p-12 text-center shadow-[0_25px_80px_rgba(0,0,0,0.4)]">
-            <Users className="mx-auto mb-3 h-10 w-10 text-white/50" />
-            <h1 className="text-2xl font-semibold text-white">No client submissions yet</h1>
-            <p className="mt-2 text-sm text-white/70">Requirement Command Center only shows submitted client records.</p>
-            <Button className="mt-6 bg-blue-600 text-white hover:bg-blue-500" onClick={() => navigate("/leads")}>Go to Leads</Button>
-          </section>
-        ) : (
-          <>
-            <section className="rounded-3xl border border-cyan-300/20 bg-[linear-gradient(145deg,rgba(12,25,48,0.95),rgba(8,17,35,0.92))] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-cyan-200/85">Requirement Command Center</p>
-                  <h2 className="mt-1 text-xl font-semibold text-white">Client Intake Records</h2>
-                </div>
-                <div className="relative w-full md:w-72">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/45" />
-                  <Input
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search company or email"
-                    className="border-cyan-300/25 bg-white/5 pl-9 text-white placeholder:text-white/45"
-                  />
-                </div>
+      <div className="grid h-full grid-cols-[380px_1fr] overflow-hidden">
+        <div className="flex flex-col border-r border-white/10 bg-[#0a1224]">
+          <div className="border-b border-white/10 p-4">
+            <h2 className="text-lg font-semibold text-white">Requirement Command Center</h2>
+            <div className="relative mt-3">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/45" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by company or email"
+                className="border-cyan-300/25 bg-white/5 pl-9 text-white placeholder:text-white/45"
+              />
+            </div>
+          </div>
+          <div className="flex-1 space-y-2 overflow-y-auto p-2">
+            {!filteredEntries.length ? (
+              <div className="flex h-full flex-col items-center justify-center p-4 text-center">
+                <Users className="h-10 w-10 text-white/50" />
+                <h3 className="mt-3 font-semibold text-white">No client submissions</h3>
+                <p className="mt-1 text-sm text-white/70">No records match your search.</p>
               </div>
-              <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
-                {filteredEntries.map((entry) => {
-                  const { lead, submission } = entry;
-                  const active = selectedEntryKey === entry.key;
-                  return (
-                    <button
-                      key={entry.key}
-                      type="button"
-                      onClick={() => handleSelectEntry(entry)}
-                      className={`min-w-[250px] rounded-2xl border px-4 py-3 text-left transition ${
-                        active
-                          ? "border-cyan-300/55 bg-cyan-500/15 shadow-[0_10px_30px_rgba(34,211,238,0.12)]"
-                          : "border-white/10 bg-white/5 hover:border-cyan-300/35 hover:bg-cyan-500/10"
-                      }`}
-                    >
-                      <p className="text-sm font-semibold text-white">{submission.form.businessName || lead.company}</p>
-                      <p className="text-xs text-white/65">{submission.form.email || lead.email}</p>
-                      <p className="mt-1 text-xs text-white/50">Updated {formatRelativeTime(submission.submittedAt)}</p>
-                      {!entry.hasLinkedLead ? (
-                        <p className="mt-1 text-[10px] uppercase tracking-wide text-amber-200/85">Unlinked intake record</p>
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-            {!selectedSubmission ? null : (
-              <>
-                <section className="sticky top-3 z-30 rounded-2xl border border-blue-400/30 bg-[#0a1429]/95 p-6 shadow-[0_10px_40px_rgba(0,0,0,0.35)] backdrop-blur">
-                  <div className="space-y-4">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                      <div>
-                        <h1 className="text-3xl font-semibold text-white">
-                          {selectedSubmission.form.businessName || selectedDisplayLead?.company || "Client Submission"} • {selectedSubmission.form.projectType}
-                        </h1>
-                        <p className="mt-2 text-sm text-blue-100/80">
-                          {selectedSubmission.form.ideaDescription || "Project description not provided."}
-                        </p>
-                      </div>
-                      <Badge variant="outline" className={`${statusTone(lifecycleStatus)} px-3 py-1 text-xs`}>
-                        {titleCaseStatus(lifecycleStatus)}
-                      </Badge>
-                    </div>
+            ) : (
+              filteredEntries.map((entry) => {
+                const { lead, submission } = entry;
+                const active = selectedEntryKey === entry.key;
+                return (
+                  <button
+                    key={entry.key}
+                    type="button"
+                    onClick={() => handleSelectEntry(entry)}
+                    className={`w-full rounded-lg border p-3 text-left transition ${
+                      active
+                        ? "border-cyan-300/55 bg-cyan-500/15 shadow-[0_10px_30px_rgba(34,211,238,0.12)]"
+                        : "border-white/10 bg-white/5 hover:border-cyan-300/35 hover:bg-cyan-500/10"
+                    }`}
+                  >
+                    <p className="text-sm font-semibold text-white">{submission.form.businessName || lead.company}</p>
+                    <p className="text-xs text-white/65">{submission.form.email || lead.email}</p>
+                    <p className="mt-1 text-xs text-white/50">Updated {formatRelativeTime(submission.submittedAt)}</p>
+                    {!entry.hasLinkedLead ? (
+                      <p className="mt-1 text-[10px] uppercase tracking-wide text-amber-200/85">Unlinked intake record</p>
+                    ) : null}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
 
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                      <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85">Budget<br /><span className="text-sm font-semibold text-white">{formatCurrency(selectedSubmission.form.budget)}</span></div>
-                      <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85">Timeline<br /><span className="text-sm font-semibold text-white">{selectedSubmission.form.deadline || "Not provided"}</span></div>
-                      <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85">Priority<br /><span className="text-sm font-semibold capitalize text-white">{selectedSubmission.form.priority}</span></div>
-                      <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85">AI Confidence<br /><span className="text-sm font-semibold text-white">{aiConfidence}%</span></div>
-                      <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85">Last Updated<br /><span className="text-sm font-semibold text-white">{formatRelativeTime(lastUpdated)}</span></div>
-                    </div>
+        <div className="relative overflow-y-auto bg-[#020710]">
+          <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-cyan-500/10 blur-3xl" />
+          <div className="pointer-events-none absolute -right-24 top-48 h-72 w-72 rounded-full bg-amber-500/10 blur-3xl" />
 
-                    <p className="text-xs text-white/65">
-                      Contact: {selectedSubmission.form.email || selectedDisplayLead?.email || "Not available"} · {selectedSubmission.form.phone || selectedDisplayLead?.phone || "Not available"}
-                    </p>
-                  </div>
-                </section>
-
-                {studioLocked ? (
-                  <section className="rounded-2xl border border-emerald-400/25 bg-emerald-500/10 p-5 text-emerald-50">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <p className="flex items-center gap-2 text-base font-semibold">
-                          <Lock className="h-4 w-4" /> Requirement Locked
-                        </p>
-                        <p className="mt-1 text-sm text-emerald-50/80">
-                          Final Version (v{finalVersion}) · Secured with password{lockSnapshot?.lockedBy ? ` · Locked by ${lockSnapshot.lockedBy}` : ""}
-                        </p>
-                      </div>
-                      <div className="text-sm text-emerald-50/80">
-                        <p>Locked at {lockSnapshot?.lockedAt ? formatDateTime(lockSnapshot.lockedAt) : "Not available"}</p>
-                        <p>Audit trail captured for execution handoff</p>
-                      </div>
-                    </div>
-                  </section>
-                ) : null}
-
-                {!hasLinkedLead ? (
-                  <section className="rounded-2xl border border-amber-300/35 bg-gradient-to-r from-amber-500/15 to-orange-500/10 p-5 text-amber-50">
-                    <p className="flex items-center gap-2 text-sm font-semibold">
-                      <AlertTriangle className="h-4 w-4" /> Intake captured without linked lead
-                    </p>
-                    <p className="mt-2 text-sm text-amber-100/85">
-                      Completed client information is shown below. To enable lock, regenerate, project conversion, and resend-link actions, attach this submission to a lead first.
-                    </p>
-                  </section>
-                ) : null}
-
-                <section className="rounded-2xl border border-cyan-300/25 bg-[radial-gradient(circle_at_top_right,rgba(45,212,191,0.22),rgba(10,18,36,0.95)_55%)] p-7">
-                  <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          {!selectedSubmission ? (
+            <div className="flex h-full flex-col items-center justify-center p-12 text-center">
+              <Users className="mx-auto mb-3 h-10 w-10 text-white/50" />
+              <h1 className="text-2xl font-semibold text-white">No client submissions yet</h1>
+              <p className="mt-2 text-sm text-white/70">Requirement Command Center only shows submitted client records.</p>
+              <Button className="mt-6 bg-blue-600 text-white hover:bg-blue-500" onClick={() => navigate("/leads")}>Go to Leads</Button>
+            </div>
+          ) : (
+            <div className="space-y-6 p-6">
+              <section className="sticky top-0 z-30 -mx-6 -mt-6 rounded-b-2xl border-b border-blue-400/30 bg-[#0a1429]/95 p-6 shadow-[0_10px_40px_rgba(0,0,0,0.35)] backdrop-blur">
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div>
-                      <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/80">Client Intake Snapshot</p>
-                      <h2 className="mt-1 text-xl font-semibold text-white">Completed Information Overview</h2>
+                      <h1 className="text-3xl font-semibold text-white">
+                        {selectedSubmission.form.businessName || selectedDisplayLead?.company || "Client Submission"} • {selectedSubmission.form.projectType}
+                      </h1>
+                      <p className="mt-2 text-sm text-blue-100/80">
+                        {selectedSubmission.form.ideaDescription || "Project description not provided."}
+                      </p>
                     </div>
-                    <Badge variant="outline" className="w-fit border-cyan-300/40 bg-cyan-400/10 text-cyan-100">
-                      Submission {formatDateTime(selectedSubmission.submittedAt)}
+                    <Badge variant="outline" className={`${statusTone(lifecycleStatus)} px-3 py-1 text-xs`}>
+                      {titleCaseStatus(lifecycleStatus)}
                     </Badge>
                   </div>
 
-                  <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                      <p className="text-xs uppercase tracking-wide text-cyan-100/70">Business</p>
-                      <p className="mt-1 text-sm font-semibold text-white">{selectedSubmission.form.businessName || "Not provided"}</p>
-                      <p className="mt-2 text-xs text-white/65">Industry: {selectedSubmission.form.industry || "Not provided"}</p>
-                      <p className="text-xs text-white/65">Company Size: {selectedSubmission.form.companySize || "Not provided"}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                      <p className="text-xs uppercase tracking-wide text-cyan-100/70">Primary Contact</p>
-                      <p className="mt-1 text-sm font-semibold text-white">{selectedSubmission.form.contactName || selectedSubmission.leadName || "Not provided"}</p>
-                      <p className="mt-2 text-xs text-white/65">Email: {selectedSubmission.form.email || "Not provided"}</p>
-                      <p className="text-xs text-white/65">Phone: {selectedSubmission.form.phone || "Not provided"}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                      <p className="text-xs uppercase tracking-wide text-cyan-100/70">Goal and Audience</p>
-                      <p className="mt-1 text-sm font-semibold text-white">{selectedSubmission.form.goal || "Not provided"}</p>
-                      <p className="mt-2 text-xs text-white/65">Target Audience: {selectedSubmission.form.targetAudience || "Not provided"}</p>
-                      <p className="text-xs text-white/65">Package: {selectedSubmission.form.selectedPackage}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                      <p className="text-xs uppercase tracking-wide text-cyan-100/70">Scope Stats</p>
-                      <p className="mt-1 text-sm font-semibold text-white">{selectedSubmission.form.features.length} Features</p>
-                      <p className="mt-2 text-xs text-white/65">{selectedSubmission.form.userRoles.length} User Roles</p>
-                      <p className="text-xs text-white/65">{selectedSubmission.form.modules.length} Modules</p>
-                    </div>
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85">Budget<br /><span className="text-sm font-semibold text-white">{formatCurrency(selectedSubmission.form.budget)}</span></div>
+                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85">Timeline<br /><span className="text-sm font-semibold text-white">{selectedSubmission.form.deadline || "Not provided"}</span></div>
+                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85">Priority<br /><span className="text-sm font-semibold capitalize text-white">{selectedSubmission.form.priority}</span></div>
+                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85">AI Confidence<br /><span className="text-sm font-semibold text-white">{aiConfidence}%</span></div>
+                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85">Last Updated<br /><span className="text-sm font-semibold text-white">{formatRelativeTime(lastUpdated)}</span></div>
                   </div>
 
-                  <div className="mt-4 grid gap-4 lg:grid-cols-3">
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                      <p className="text-sm font-semibold text-cyan-100">Feature Selection</p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {selectedSubmission.form.features.length ? (
-                          selectedSubmission.form.features.map((feature) => (
-                            <Badge key={feature} variant="outline" className="border-cyan-300/35 bg-cyan-400/10 text-cyan-100">
+                  <p className="text-xs text-white/65">
+                    Contact: {selectedSubmission.form.email || selectedDisplayLead?.email || "Not available"} · {selectedSubmission.form.phone || selectedDisplayLead?.phone || "Not available"}
+                  </p>
+                </div>
+              </section>
+
+              {studioLocked ? (
+                <section className="rounded-2xl border border-emerald-400/25 bg-emerald-500/10 p-5 text-emerald-50">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="flex items-center gap-2 text-base font-semibold">
+                        <Lock className="h-4 w-4" /> Requirement Locked
+                      </p>
+                      <p className="mt-1 text-sm text-emerald-50/80">
+                        Final Version (v{finalVersion}) · Secured with password{lockSnapshot?.lockedBy ? ` · Locked by ${lockSnapshot.lockedBy}` : ""}
+                      </p>
+                    </div>
+                    <div className="text-sm text-emerald-50/80">
+                      <p>Locked at {lockSnapshot?.lockedAt ? formatDateTime(lockSnapshot.lockedAt) : "Not available"}</p>
+                      <p>Audit trail captured for execution handoff</p>
+                    </div>
+                  </div>
+                </section>
+              ) : null}
+
+              {!hasLinkedLead ? (
+                <section className="rounded-2xl border border-amber-300/35 bg-gradient-to-r from-amber-500/15 to-orange-500/10 p-5 text-amber-50">
+                  <p className="flex items-center gap-2 text-sm font-semibold">
+                    <AlertTriangle className="h-4 w-4" /> Intake captured without linked lead
+                  </p>
+                  <p className="mt-2 text-sm text-amber-100/85">
+                    Completed client information is shown below. To enable lock, regenerate, project conversion, and resend-link actions, attach this submission to a lead first.
+                  </p>
+                </section>
+              ) : null}
+
+              <section className="rounded-2xl border border-cyan-300/25 bg-[radial-gradient(circle_at_top_right,rgba(45,212,191,0.22),rgba(10,18,36,0.95)_55%)] p-7">
+                <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/80">Client Intake Snapshot</p>
+                    <h2 className="mt-1 text-xl font-semibold text-white">Completed Information Overview</h2>
+                  </div>
+                  <Badge variant="outline" className="w-fit border-cyan-300/40 bg-cyan-400/10 text-cyan-100">
+                    Submission {formatDateTime(selectedSubmission.submittedAt)}
+                  </Badge>
+                </div>
+
+                <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-xs uppercase tracking-wide text-cyan-100/70">Business</p>
+                    <p className="mt-1 text-sm font-semibold text-white">{selectedSubmission.form.businessName || "Not provided"}</p>
+                    <p className="mt-2 text-xs text-white/65">Industry: {selectedSubmission.form.industry || "Not provided"}</p>
+                    <p className="text-xs text-white/65">Company Size: {selectedSubmission.form.companySize || "Not provided"}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-xs uppercase tracking-wide text-cyan-100/70">Primary Contact</p>
+                    <p className="mt-1 text-sm font-semibold text-white">{selectedSubmission.form.contactName || selectedSubmission.leadName || "Not provided"}</p>
+                    <p className="mt-2 text-xs text-white/65">Email: {selectedSubmission.form.email || "Not provided"}</p>
+                    <p className="text-xs text-white/65">Phone: {selectedSubmission.form.phone || "Not provided"}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-xs uppercase tracking-wide text-cyan-100/70">Goal and Audience</p>
+                    <p className="mt-1 text-sm font-semibold text-white">{selectedSubmission.form.goal || "Not provided"}</p>
+                    <p className="mt-2 text-xs text-white/65">Target Audience: {selectedSubmission.form.targetAudience || "Not provided"}</p>
+                    <p className="text-xs text-white/65">Package: {selectedSubmission.form.selectedPackage}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-xs uppercase tracking-wide text-cyan-100/70">Scope Stats</p>
+                    <p className="mt-1 text-sm font-semibold text-white">{selectedSubmission.form.features.length} Features</p>
+                    <p className="mt-2 text-xs text-white/65">{selectedSubmission.form.userRoles.length} User Roles</p>
+                    <p className="text-xs text-white/65">{selectedSubmission.form.modules.length} Modules</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-4 lg:grid-cols-3">
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-sm font-semibold text-cyan-100">Feature Selection</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {selectedSubmission.form.features.length ? (
+                        selectedSubmission.form.features.map((feature) => (
+                          <Badge key={feature} variant="outline" className="border-cyan-300/35 bg-cyan-400/10 text-cyan-100">
+                            {feature}
+                          </Badge>
+                        ))
+                      ) : (
+                        <p className="text-xs text-white/65">No features selected</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-sm font-semibold text-cyan-100">User Roles</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {selectedSubmission.form.userRoles.length ? (
+                        selectedSubmission.form.userRoles.map((role) => (
+                          <Badge key={role} variant="outline" className="border-emerald-300/35 bg-emerald-400/10 text-emerald-100">
+                            {role}
+                          </Badge>
+                        ))
+                      ) : (
+                        <p className="text-xs text-white/65">No roles selected</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-sm font-semibold text-cyan-100">Modules / Pages</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {selectedSubmission.form.modules.length ? (
+                        selectedSubmission.form.modules.map((moduleName) => (
+                          <Badge key={moduleName} variant="outline" className="border-sky-300/35 bg-sky-400/10 text-sky-100">
+                            {moduleName}
+                          </Badge>
+                        ))
+                      ) : (
+                        <p className="text-xs text-white/65">No modules selected</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-3xl border border-amber-300/20 bg-[linear-gradient(145deg,rgba(31,18,5,0.35),rgba(8,14,28,0.92))] p-7 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
+                <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.16em] text-amber-200/80">Client Intake Form Ledger</p>
+                    <h2 className="mt-1 text-xl font-semibold text-white">All Submitted Intake Fields</h2>
+                  </div>
+                  <Badge variant="outline" className="w-fit border-amber-300/35 bg-amber-500/10 text-amber-100">
+                    Source: Client Intake Form
+                  </Badge>
+                </div>
+
+                <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
+                    <p className="text-xs uppercase tracking-wide text-amber-100/75">Business Name</p>
+                    <p className="mt-1 font-medium text-white">{selectedSubmission.form.businessName || "Not provided"}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
+                    <p className="text-xs uppercase tracking-wide text-amber-100/75">Industry</p>
+                    <p className="mt-1 font-medium text-white">{selectedSubmission.form.industry || "Not provided"}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
+                    <p className="text-xs uppercase tracking-wide text-amber-100/75">Company Size</p>
+                    <p className="mt-1 font-medium text-white">{selectedSubmission.form.companySize || "Not provided"}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
+                    <p className="text-xs uppercase tracking-wide text-amber-100/75">Contact Name</p>
+                    <p className="mt-1 font-medium text-white">{selectedSubmission.form.contactName || "Not provided"}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
+                    <p className="text-xs uppercase tracking-wide text-amber-100/75">Email</p>
+                    <p className="mt-1 font-medium text-white break-all">{selectedSubmission.form.email || "Not provided"}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
+                    <p className="text-xs uppercase tracking-wide text-amber-100/75">Phone</p>
+                    <p className="mt-1 font-medium text-white">{selectedSubmission.form.phone || "Not provided"}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
+                    <p className="text-xs uppercase tracking-wide text-amber-100/75">Project Type</p>
+                    <p className="mt-1 font-medium text-white">{selectedSubmission.form.projectType || "Not provided"}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85 md:col-span-2">
+                    <p className="text-xs uppercase tracking-wide text-amber-100/75">Goal</p>
+                    <p className="mt-1 font-medium text-white">{selectedSubmission.form.goal || "Not provided"}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85 xl:col-span-3">
+                    <p className="text-xs uppercase tracking-wide text-amber-100/75">Idea Description</p>
+                    <p className="mt-1 leading-6 text-white/90">{selectedSubmission.form.ideaDescription || "Not provided"}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85 xl:col-span-2">
+                    <p className="text-xs uppercase tracking-wide text-amber-100/75">Target Audience</p>
+                    <p className="mt-1 font-medium text-white">{selectedSubmission.form.targetAudience || "Not provided"}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
+                    <p className="text-xs uppercase tracking-wide text-amber-100/75">Priority</p>
+                    <p className="mt-1 font-medium capitalize text-white">{selectedSubmission.form.priority || "Not provided"}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
+                    <p className="text-xs uppercase tracking-wide text-amber-100/75">Budget</p>
+                    <p className="mt-1 font-medium text-white">{formatCurrency(selectedSubmission.form.budget)}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
+                    <p className="text-xs uppercase tracking-wide text-amber-100/75">Estimated Price</p>
+                    <p className="mt-1 font-medium text-white">{formatCurrency(selectedSubmission.form.estimatedPrice)}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
+                    <p className="text-xs uppercase tracking-wide text-amber-100/75">Deadline</p>
+                    <p className="mt-1 font-medium text-white">{selectedSubmission.form.deadline || "Not provided"}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
+                    <p className="text-xs uppercase tracking-wide text-amber-100/75">Selected Package</p>
+                    <p className="mt-1 font-medium capitalize text-white">{selectedSubmission.form.selectedPackage || "Not provided"}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
+                    <p className="text-xs uppercase tracking-wide text-amber-100/75">Meeting Slot</p>
+                    <p className="mt-1 font-medium text-white">{selectedSubmission.form.meetingSlot || "Not provided"}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
+                    <p className="text-xs uppercase tracking-wide text-amber-100/75">Terms Accepted</p>
+                    <p className="mt-1 font-medium text-white">{selectedSubmission.form.termsAccepted ? "Yes" : "No"}</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-4 lg:grid-cols-3">
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-sm font-semibold text-amber-100">Features</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {selectedSubmission.form.features.length
+                        ? selectedSubmission.form.features.map((feature) => (
+                            <Badge key={`ledger-feature-${feature}`} variant="outline" className="border-cyan-300/35 bg-cyan-500/10 text-cyan-100">
                               {feature}
                             </Badge>
                           ))
-                        ) : (
-                          <p className="text-xs text-white/65">No features selected</p>
-                        )}
-                      </div>
+                        : <p className="text-xs text-white/65">No features selected</p>}
                     </div>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                      <p className="text-sm font-semibold text-cyan-100">User Roles</p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {selectedSubmission.form.userRoles.length ? (
-                          selectedSubmission.form.userRoles.map((role) => (
-                            <Badge key={role} variant="outline" className="border-emerald-300/35 bg-emerald-400/10 text-emerald-100">
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-sm font-semibold text-amber-100">User Roles</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {selectedSubmission.form.userRoles.length
+                        ? selectedSubmission.form.userRoles.map((role) => (
+                            <Badge key={`ledger-role-${role}`} variant="outline" className="border-emerald-300/35 bg-emerald-500/10 text-emerald-100">
                               {role}
                             </Badge>
                           ))
-                        ) : (
-                          <p className="text-xs text-white/65">No roles selected</p>
-                        )}
-                      </div>
+                        : <p className="text-xs text-white/65">No user roles selected</p>}
                     </div>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                      <p className="text-sm font-semibold text-cyan-100">Modules / Pages</p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {selectedSubmission.form.modules.length ? (
-                          selectedSubmission.form.modules.map((moduleName) => (
-                            <Badge key={moduleName} variant="outline" className="border-sky-300/35 bg-sky-400/10 text-sky-100">
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-sm font-semibold text-amber-100">Modules / Pages</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {selectedSubmission.form.modules.length
+                        ? selectedSubmission.form.modules.map((moduleName) => (
+                            <Badge key={`ledger-module-${moduleName}`} variant="outline" className="border-sky-300/35 bg-sky-500/10 text-sky-100">
                               {moduleName}
                             </Badge>
                           ))
-                        ) : (
-                          <p className="text-xs text-white/65">No modules selected</p>
-                        )}
-                      </div>
+                        : <p className="text-xs text-white/65">No modules selected</p>}
                     </div>
                   </div>
-                </section>
-
-                <section className="rounded-3xl border border-amber-300/20 bg-[linear-gradient(145deg,rgba(31,18,5,0.35),rgba(8,14,28,0.92))] p-7 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
-                  <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.16em] text-amber-200/80">Client Intake Form Ledger</p>
-                      <h2 className="mt-1 text-xl font-semibold text-white">All Submitted Intake Fields</h2>
-                    </div>
-                    <Badge variant="outline" className="w-fit border-amber-300/35 bg-amber-500/10 text-amber-100">
-                      Source: Client Intake Form
-                    </Badge>
-                  </div>
-
-                  <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
-                      <p className="text-xs uppercase tracking-wide text-amber-100/75">Business Name</p>
-                      <p className="mt-1 font-medium text-white">{selectedSubmission.form.businessName || "Not provided"}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
-                      <p className="text-xs uppercase tracking-wide text-amber-100/75">Industry</p>
-                      <p className="mt-1 font-medium text-white">{selectedSubmission.form.industry || "Not provided"}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
-                      <p className="text-xs uppercase tracking-wide text-amber-100/75">Company Size</p>
-                      <p className="mt-1 font-medium text-white">{selectedSubmission.form.companySize || "Not provided"}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
-                      <p className="text-xs uppercase tracking-wide text-amber-100/75">Contact Name</p>
-                      <p className="mt-1 font-medium text-white">{selectedSubmission.form.contactName || "Not provided"}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
-                      <p className="text-xs uppercase tracking-wide text-amber-100/75">Email</p>
-                      <p className="mt-1 font-medium text-white break-all">{selectedSubmission.form.email || "Not provided"}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
-                      <p className="text-xs uppercase tracking-wide text-amber-100/75">Phone</p>
-                      <p className="mt-1 font-medium text-white">{selectedSubmission.form.phone || "Not provided"}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
-                      <p className="text-xs uppercase tracking-wide text-amber-100/75">Project Type</p>
-                      <p className="mt-1 font-medium text-white">{selectedSubmission.form.projectType || "Not provided"}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85 md:col-span-2">
-                      <p className="text-xs uppercase tracking-wide text-amber-100/75">Goal</p>
-                      <p className="mt-1 font-medium text-white">{selectedSubmission.form.goal || "Not provided"}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85 xl:col-span-3">
-                      <p className="text-xs uppercase tracking-wide text-amber-100/75">Idea Description</p>
-                      <p className="mt-1 leading-6 text-white/90">{selectedSubmission.form.ideaDescription || "Not provided"}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85 xl:col-span-2">
-                      <p className="text-xs uppercase tracking-wide text-amber-100/75">Target Audience</p>
-                      <p className="mt-1 font-medium text-white">{selectedSubmission.form.targetAudience || "Not provided"}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
-                      <p className="text-xs uppercase tracking-wide text-amber-100/75">Priority</p>
-                      <p className="mt-1 font-medium capitalize text-white">{selectedSubmission.form.priority || "Not provided"}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
-                      <p className="text-xs uppercase tracking-wide text-amber-100/75">Budget</p>
-                      <p className="mt-1 font-medium text-white">{formatCurrency(selectedSubmission.form.budget)}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
-                      <p className="text-xs uppercase tracking-wide text-amber-100/75">Estimated Price</p>
-                      <p className="mt-1 font-medium text-white">{formatCurrency(selectedSubmission.form.estimatedPrice)}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
-                      <p className="text-xs uppercase tracking-wide text-amber-100/75">Deadline</p>
-                      <p className="mt-1 font-medium text-white">{selectedSubmission.form.deadline || "Not provided"}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
-                      <p className="text-xs uppercase tracking-wide text-amber-100/75">Selected Package</p>
-                      <p className="mt-1 font-medium capitalize text-white">{selectedSubmission.form.selectedPackage || "Not provided"}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
-                      <p className="text-xs uppercase tracking-wide text-amber-100/75">Meeting Slot</p>
-                      <p className="mt-1 font-medium text-white">{selectedSubmission.form.meetingSlot || "Not provided"}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/85">
-                      <p className="text-xs uppercase tracking-wide text-amber-100/75">Terms Accepted</p>
-                      <p className="mt-1 font-medium text-white">{selectedSubmission.form.termsAccepted ? "Yes" : "No"}</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid gap-4 lg:grid-cols-3">
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                      <p className="text-sm font-semibold text-amber-100">Features</p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {selectedSubmission.form.features.length
-                          ? selectedSubmission.form.features.map((feature) => (
-                              <Badge key={`ledger-feature-${feature}`} variant="outline" className="border-cyan-300/35 bg-cyan-500/10 text-cyan-100">
-                                {feature}
-                              </Badge>
-                            ))
-                          : <p className="text-xs text-white/65">No features selected</p>}
-                      </div>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                      <p className="text-sm font-semibold text-amber-100">User Roles</p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {selectedSubmission.form.userRoles.length
-                          ? selectedSubmission.form.userRoles.map((role) => (
-                              <Badge key={`ledger-role-${role}`} variant="outline" className="border-emerald-300/35 bg-emerald-500/10 text-emerald-100">
-                                {role}
-                              </Badge>
-                            ))
-                          : <p className="text-xs text-white/65">No user roles selected</p>}
-                      </div>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                      <p className="text-sm font-semibold text-amber-100">Modules / Pages</p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {selectedSubmission.form.modules.length
-                          ? selectedSubmission.form.modules.map((moduleName) => (
-                              <Badge key={`ledger-module-${moduleName}`} variant="outline" className="border-sky-300/35 bg-sky-500/10 text-sky-100">
-                                {moduleName}
-                              </Badge>
-                            ))
-                          : <p className="text-xs text-white/65">No modules selected</p>}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-sm font-semibold text-amber-100">AI Suggestion Notes</p>
-                    <div className="mt-2 space-y-1 text-sm text-white/85">
-                      {selectedSubmission.form.suggestionNotes.length
-                        ? selectedSubmission.form.suggestionNotes.map((note, index) => (
-                            <p key={`note-${index}`}>- {note}</p>
-                          ))
-                        : <p className="text-white/65">No suggestion notes were saved from intake.</p>}
-                    </div>
-                  </div>
-                </section>
-
-                <section className="rounded-2xl border border-white/10 bg-[#0a1224] p-7">
-                  <h2 className="text-xl font-semibold text-white">Project Understanding</h2>
-                  <div className="mt-5 grid gap-4 md:grid-cols-2">
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-4"><p className="flex items-center gap-2 text-sm font-medium text-blue-200"><Target className="h-4 w-4" /> Goal</p><p className="mt-2 text-sm text-white/85">{selectedSubmission.form.ideaDescription || "Build project based on submitted scope"}</p></div>
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-4"><p className="flex items-center gap-2 text-sm font-medium text-blue-200"><Users className="h-4 w-4" /> Users</p><p className="mt-2 text-sm text-white/85">{inferUsers(selectedSubmission)}</p></div>
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-4"><p className="flex items-center gap-2 text-sm font-medium text-blue-200"><Layers className="h-4 w-4" /> Business Type</p><p className="mt-2 text-sm text-white/85">{selectedSubmission.form.industry || "Not provided"}</p></div>
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-4"><p className="flex items-center gap-2 text-sm font-medium text-blue-200"><Zap className="h-4 w-4" /> Priority</p><p className="mt-2 text-sm text-white/85">{inferPriorityNarrative(selectedSubmission)}</p></div>
-                  </div>
-                </section>
-
-                <section className="rounded-2xl border border-white/10 bg-[#0a1224] p-7">
-                  <h2 className="text-xl font-semibold text-white">Requirement Breakdown</h2>
-                  <div className="mt-5 space-y-4">
-                    {requirementBreakdown.length ? (
-                      requirementBreakdown.map((group) => (
-                        <div key={group.title} className="rounded-xl border border-white/10 bg-white/5 p-4">
-                          <p className="text-sm font-semibold text-blue-200">{group.title}</p>
-                          <div className="mt-2 space-y-1">
-                            {group.items.map((item) => (
-                              <p key={`${group.title}-${item}`} className="text-sm text-white/85">- {item}</p>
-                            ))}
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-white/70">No submitted requirement items.</p>
-                    )}
-                  </div>
-                </section>
-
-                <section className="rounded-2xl border border-white/10 bg-[#0a1224] p-7">
-                  <h2 className="text-xl font-semibold text-white">Execution Pipeline</h2>
-                  <div className="mt-5 grid gap-3 md:grid-cols-4">
-                    {pipeline.map((stage) => (
-                      <div key={stage.key} className="rounded-xl border border-white/10 bg-white/5 p-4">
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm font-semibold text-white">{stage.label}</p>
-                          <p className="text-xs text-white/70">
-                            {stage.status === "done" ? "Done" : stage.status === "in-progress" ? "In Progress" : "Locked"}
-                          </p>
-                        </div>
-                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-                          <div
-                            className="h-full rounded-full bg-blue-400"
-                            style={{ width: `${stage.progress}%`, opacity: stage.status === "locked" ? 0.45 : 1 }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="mt-4 text-sm text-white/70">Design → Frontend → Backend → Testing</p>
-                </section>
-
-                <section className="rounded-2xl border border-white/10 bg-[#0a1224] p-7">
-                  <h2 className="text-xl font-semibold text-white">Files + Assets</h2>
-                  <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {selectedSubmission.form.uploadedFiles.length ? (
-                      selectedSubmission.form.uploadedFiles.map((file) => (
-                        <div key={`${file.name}-${file.size}`} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-start gap-2">
-                              <div className="rounded-lg border border-white/10 bg-white/5 p-2">
-                                {isImageFile(file) ? <ImageIcon className="h-4 w-4 text-blue-200" /> : <FileText className="h-4 w-4 text-blue-200" />}
-                              </div>
-                              <div>
-                                <p className="text-sm font-medium text-white">{file.name}</p>
-                                <p className="text-xs text-white/65">{formatFileSize(file.size)}</p>
-                              </div>
-                            </div>
-                            <Badge variant="outline" className="border-blue-300/30 bg-blue-500/10 text-[10px] text-blue-100">{getAssetTag(file)}</Badge>
-                          </div>
-                          {isImageFile(file) && file.previewUrl ? (
-                            <div className="mt-3 overflow-hidden rounded-lg border border-white/10">
-                              <img src={file.previewUrl} alt={file.name} className="h-32 w-full object-cover" />
-                            </div>
-                          ) : null}
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-white/70">No assets uploaded.</p>
-                    )}
-                  </div>
-                </section>
-
-                <section className="rounded-2xl border border-white/10 bg-[#0a1224] p-7">
-                  <h2 className="text-xl font-semibold text-white">Meeting + AI Insights</h2>
-                  <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                      <p className="text-sm font-semibold text-blue-200">AI Summary</p>
-                      <p className="mt-2 text-sm text-white/85">{aiSummary}</p>
-                      <p className="mt-4 flex items-center gap-2 text-xs text-white/65"><Clock3 className="h-3.5 w-3.5" /> Meeting: {selectedSubmission.form.meetingSlot || formatDateTime(requirementBundle?.meeting?.dateTime)}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                      <p className="text-sm font-semibold text-blue-200">Missing + Suggestion</p>
-                      <div className="mt-2 space-y-1 text-sm text-white/85">
-                        {completeness.missing.length ? (
-                          completeness.missing.slice(0, 4).map((item) => <p key={item}>- {item}</p>)
-                        ) : (
-                          <p>- No major missing items detected.</p>
-                        )}
-                      </div>
-                      <p className="mt-4 text-sm text-white/80">
-                        Suggestion: {completeness.missing.some((item) => /api/i.test(item))
-                          ? "Start with frontend + mock API, then finalize backend contract."
-                          : "Generate tasks and start frontend implementation immediately."}
-                      </p>
-                    </div>
-                  </div>
-                </section>
-
-                <section className="rounded-2xl border border-white/10 bg-[#0a1224] p-7">
-                  <h2 className="text-xl font-semibold text-white">Completeness Engine</h2>
-                  <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-4">
-                    <div className="flex items-center justify-between text-sm">
-                      <p className="text-white/80">Completion</p>
-                      <p className="font-semibold text-white">{completeness.percent}%</p>
-                    </div>
-                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
-                      <div className="h-full rounded-full bg-blue-400" style={{ width: `${completeness.percent}%` }} />
-                    </div>
-                    <div className="mt-4 space-y-1 text-sm text-white/80">
-                      {completeness.missing.length ? completeness.missing.map((item) => <p key={`miss-${item}`}>- {item}</p>) : <p>- No blockers</p>}
-                    </div>
-                  </div>
-                </section>
-
-                <section className="rounded-2xl border border-blue-400/30 bg-[#0a1429] p-7">
-                  <h2 className="text-xl font-semibold text-white">Decision Panel</h2>
-                  <p className="mt-2 text-sm text-blue-100/85">
-                    {studioLocked
-                      ? "Requirement is frozen. Use the final version to generate tasks or convert directly to project delivery."
-                      : "Recommended Action: Generate tasks and start frontend."}
-                  </p>
-                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                      <p className="text-xs uppercase tracking-wide text-white/50">Ready to lock</p>
-                      <p className="mt-1 text-sm font-semibold text-white">{readyToLock ? "Yes" : "Review first"}</p>
-                      <p className="text-xs text-white/60">Completion {completeness.percent}% · Lock score {lockScore}%</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                      <p className="text-xs uppercase tracking-wide text-white/50">Missing</p>
-                      <p className="mt-1 text-sm font-semibold text-white">{lockMissing.length ? lockMissing[0] : "No blockers"}</p>
-                      <p className="text-xs text-white/60">{lockMissing.length > 1 ? `+${lockMissing.length - 1} more` : "Lock validation passed"}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                      <p className="text-xs uppercase tracking-wide text-white/50">Version</p>
-                      <p className="mt-1 text-sm font-semibold text-white">Final v{finalVersion}</p>
-                      <p className="text-xs text-white/60">No overwrite after lock</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                      <p className="text-xs uppercase tracking-wide text-white/50">Security</p>
-                      <p className="mt-1 text-sm font-semibold text-white">{studioLocked ? "Secured" : "Not locked"}</p>
-                      <p className="text-xs text-white/60">{studioLocked ? `Failed unlock attempts: ${lockSnapshot?.unlockFailedAttempts ?? 0}` : "Password lock available"}</p>
-                    </div>
-                  </div>
-                  <div className="mt-5 flex flex-wrap gap-3">
-                    <Button onClick={handleGenerateTasks} disabled={!hasLinkedLead} className="bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50">
-                      <SquareStack className="mr-2 h-4 w-4" /> Generate Tasks
-                    </Button>
-                    {!studioLocked ? (
-                      <Button variant="outline" className="border-white/25 bg-white/5 text-white hover:bg-white/10" onClick={handleOpenEditStudio}>
-                        <Pencil className="mr-2 h-4 w-4" /> Edit
-                      </Button>
-                    ) : (
-                      <Button variant="outline" className="border-white/25 bg-white/5 text-white hover:bg-white/10" onClick={handleOpenEditStudio}>
-                        <Pencil className="mr-2 h-4 w-4" /> View Only
-                      </Button>
-                    )}
-                    {!studioLocked ? (
-                      <Button
-                        variant="outline"
-                        className="border-white/25 bg-white/5 text-white hover:bg-white/10 disabled:opacity-50"
-                        onClick={handleLock}
-                        disabled={!hasLinkedLead}
-                      >
-                        <Lock className="mr-2 h-4 w-4" /> Lock
-                      </Button>
-                    ) : null}
-                    <Button
-                      variant="outline"
-                      className="border-white/25 bg-white/5 text-white hover:bg-white/10 disabled:opacity-50"
-                      onClick={handleConvertToProject}
-                      disabled={!hasLinkedLead}
-                    >
-                      <Rocket className="mr-2 h-4 w-4" /> Convert to Project
-                    </Button>
-                    {!studioLocked ? (
-                      <Button
-                        variant="outline"
-                        className="border-white/25 bg-white/5 text-white hover:bg-white/10 disabled:opacity-50"
-                        onClick={handleRegenerate}
-                        disabled={!hasLinkedLead}
-                      >
-                        <RefreshCw className="mr-2 h-4 w-4" /> Regenerate AI
-                      </Button>
-                    ) : null}
-                    {studioLocked && isAdmin ? (
-                      <Button variant="outline" className="border-amber-300/40 bg-amber-500/10 text-amber-50 hover:bg-amber-500/20" onClick={handleUnlock}>
-                        <Lock className="mr-2 h-4 w-4" /> Unlock
-                      </Button>
-                    ) : null}
-                    <Button
-                      variant="outline"
-                      className="border-white/25 bg-white/5 text-white hover:bg-white/10 disabled:opacity-50"
-                      onClick={handleResendLink}
-                      disabled={!hasLinkedLead}
-                    >
-                      <ArrowRight className="mr-2 h-4 w-4" /> Resend Link
-                    </Button>
-                  </div>
-                  <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-white/65">
-                    <p>Lifecycle: Pending → Submitted → Verified → Locked</p>
-                    <p className="mt-1">
-                      Access: {accessRecord?.id || "Not available"} · Intake link: {selectedLead ? getClientIntakeLinkForLead(selectedLead).replace(/^https?:\/\//, "") : "Not available"}
-                    </p>
-                    <p className="mt-1 flex items-center gap-2"><Bot className="h-3.5 w-3.5" /> Last AI refresh: {formatRelativeTime(lastUpdated)}</p>
-                  </div>
-                </section>
-              </>
-            )}
-          </>
-        )}
-      </div>
-
-      {isEditStudioOpen && selectedSubmission && draftForm ? (
-        <div className="fixed inset-0 z-50 bg-[#020710]/95 p-3 backdrop-blur md:p-6">
-          <div className="mx-auto flex h-full w-full max-w-7xl flex-col overflow-hidden rounded-3xl border border-blue-300/25 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.22),_rgba(8,18,36,0.96)_55%)] shadow-[0_25px_90px_rgba(0,0,0,0.55)]">
-            <div className="border-b border-blue-300/20 px-4 py-4 md:px-6">
-              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-blue-200/75">Requirement Refinement Studio</p>
-                  <h2 className="mt-1 text-xl font-semibold text-white md:text-2xl">Improve Scope Before Delivery</h2>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  {versionTimeline.map((version) => (
-                    <Badge key={version.id} variant="outline" className="border-blue-300/30 bg-blue-500/10 text-blue-100">
-                      <GitBranch className="mr-1 h-3 w-3" /> {version.label}
-                    </Badge>
+                <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-sm font-semibold text-amber-100">AI Suggestion Notes</p>
+                  <div className="mt-2 space-y-1 text-sm text-white/85">
+                    {selectedSubmission.form.suggestionNotes.length
+                      ? selectedSubmission.form.suggestionNotes.map((note, index) => (
+                          <p key={`note-${index}`}>- {note}</p>
+                        ))
+                      : <p className="text-white/65">No suggestion notes were saved from intake.</p>}
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-white/10 bg-[#0a1224] p-7">
+                <h2 className="text-xl font-semibold text-white">Project Understanding</h2>
+                <div className="mt-5 grid gap-4 md:grid-cols-2">
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4"><p className="flex items-center gap-2 text-sm font-medium text-blue-200"><Target className="h-4 w-4" /> Goal</p><p className="mt-2 text-sm text-white/85">{selectedSubmission.form.ideaDescription || "Build project based on submitted scope"}</p></div>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4"><p className="flex items-center gap-2 text-sm font-medium text-blue-200"><Users className="h-4 w-4" /> Users</p><p className="mt-2 text-sm text-white/85">{inferUsers(selectedSubmission)}</p></div>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4"><p className="flex items-center gap-2 text-sm font-medium text-blue-200"><Layers className="h-4 w-4" /> Business Type</p><p className="mt-2 text-sm text-white/85">{selectedSubmission.form.industry || "Not provided"}</p></div>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4"><p className="flex items-center gap-2 text-sm font-medium text-blue-200"><Zap className="h-4 w-4" /> Priority</p><p className="mt-2 text-sm text-white/85">{inferPriorityNarrative(selectedSubmission)}</p></div>
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-white/10 bg-[#0a1224] p-7">
+                <h2 className="text-xl font-semibold text-white">Requirement Breakdown</h2>
+                <div className="mt-5 space-y-4">
+                  {requirementBreakdown.length ? (
+                    requirementBreakdown.map((group) => (
+                      <div key={group.title} className="rounded-xl border border-white/10 bg-white/5 p-4">
+                        <p className="text-sm font-semibold text-blue-200">{group.title}</p>
+                        <div className="mt-2 space-y-1">
+                          {group.items.map((item) => (
+                            <p key={`${group.title}-${item}`} className="text-sm text-white/85">- {item}</p>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-white/70">No submitted requirement items.</p>
+                  )}
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-white/10 bg-[#0a1224] p-7">
+                <h2 className="text-xl font-semibold text-white">Execution Pipeline</h2>
+                <div className="mt-5 grid gap-3 md:grid-cols-4">
+                  {pipeline.map((stage) => (
+                    <div key={stage.key} className="rounded-xl border border-white/10 bg-white/5 p-4">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold text-white">{stage.label}</p>
+                        <p className="text-xs text-white/70">
+                          {stage.status === "done" ? "Done" : stage.status === "in-progress" ? "In Progress" : "Locked"}
+                        </p>
+                      </div>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+                        <div
+                          className="h-full rounded-full bg-blue-400"
+                          style={{ width: `${stage.progress}%`, opacity: stage.status === "locked" ? 0.45 : 1 }}
+                        />
+                      </div>
+                    </div>
                   ))}
                 </div>
+                <p className="mt-4 text-sm text-white/70">Design → Frontend → Backend → Testing</p>
+              </section>
 
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    onClick={() => void handleSaveStudio(false)}
-                    disabled={studioLocked}
-                    className="bg-blue-600 text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Save
+              <section className="rounded-2xl border border-white/10 bg-[#0a1224] p-7">
+                <h2 className="text-xl font-semibold text-white">Files + Assets</h2>
+                <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {selectedSubmission.form.uploadedFiles.length ? (
+                    selectedSubmission.form.uploadedFiles.map((file) => (
+                      <div key={`${file.name}-${file.size}`} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-start gap-2">
+                            <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+                              {isImageFile(file) ? <ImageIcon className="h-4 w-4 text-blue-200" /> : <FileText className="h-4 w-4 text-blue-200" />}
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-white">{file.name}</p>
+                              <p className="text-xs text-white/65">{formatFileSize(file.size)}</p>
+                            </div>
+                          </div>
+                          <Badge variant="outline" className="border-blue-300/30 bg-blue-500/10 text-[10px] text-blue-100">{getAssetTag(file)}</Badge>
+                        </div>
+                        {isImageFile(file) && file.previewUrl ? (
+                          <div className="mt-3 overflow-hidden rounded-lg border border-white/10">
+                            <img src={file.previewUrl} alt={file.name} className="h-32 w-full object-cover" />
+                          </div>
+                        ) : null}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-white/70">No assets uploaded.</p>
+                  )}
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-white/10 bg-[#0a1224] p-7">
+                <h2 className="text-xl font-semibold text-white">Meeting + AI Insights</h2>
+                <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-sm font-semibold text-blue-200">AI Summary</p>
+                    <p className="mt-2 text-sm text-white/85">{aiSummary}</p>
+                    <p className="mt-4 flex items-center gap-2 text-xs text-white/65"><Clock3 className="h-3.5 w-3.5" /> Meeting: {selectedSubmission.form.meetingSlot || formatDateTime(requirementBundle?.meeting?.dateTime)}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-sm font-semibold text-blue-200">Missing + Suggestion</p>
+                    <div className="mt-2 space-y-1 text-sm text-white/85">
+                      {completeness.missing.length ? (
+                        completeness.missing.slice(0, 4).map((item) => <p key={item}>- {item}</p>)
+                      ) : (
+                        <p>- No major missing items detected.</p>
+                      )}
+                    </div>
+                    <p className="mt-4 text-sm text-white/80">
+                      Suggestion: {completeness.missing.some((item) => /api/i.test(item))
+                        ? "Start with frontend + mock API, then finalize backend contract."
+                        : "Generate tasks and start frontend implementation immediately."}
+                    </p>
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-white/10 bg-[#0a1224] p-7">
+                <h2 className="text-xl font-semibold text-white">Completeness Engine</h2>
+                <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-4">
+                  <div className="flex items-center justify-between text-sm">
+                    <p className="text-white/80">Completion</p>
+                    <p className="font-semibold text-white">{completeness.percent}%</p>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+                    <div className="h-full rounded-full bg-blue-400" style={{ width: `${completeness.percent}%` }} />
+                  </div>
+                  <div className="mt-4 space-y-1 text-sm text-white/80">
+                    {completeness.missing.length ? completeness.missing.map((item) => <p key={`miss-${item}`}>- {item}</p>) : <p>- No blockers</p>}
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-blue-400/30 bg-[#0a1429] p-7">
+                <h2 className="text-xl font-semibold text-white">Decision Panel</h2>
+                <p className="mt-2 text-sm text-blue-100/85">
+                  {studioLocked
+                    ? "Requirement is frozen. Use the final version to generate tasks or convert directly to project delivery."
+                    : "Recommended Action: Generate tasks and start frontend."}
+                </p>
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                    <p className="text-xs uppercase tracking-wide text-white/50">Ready to lock</p>
+                    <p className="mt-1 text-sm font-semibold text-white">{readyToLock ? "Yes" : "Review first"}</p>
+                    <p className="text-xs text-white/60">Completion {completeness.percent}% · Lock score {lockScore}%</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                    <p className="text-xs uppercase tracking-wide text-white/50">Missing</p>
+                    <p className="mt-1 text-sm font-semibold text-white">{lockMissing.length ? lockMissing[0] : "No blockers"}</p>
+                    <p className="text-xs text-white/60">{lockMissing.length > 1 ? `+${lockMissing.length - 1} more` : "Lock validation passed"}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                    <p className="text-xs uppercase tracking-wide text-white/50">Version</p>
+                    <p className="mt-1 text-sm font-semibold text-white">Final v{finalVersion}</p>
+                    <p className="text-xs text-white/60">No overwrite after lock</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                    <p className="text-xs uppercase tracking-wide text-white/50">Security</p>
+                    <p className="mt-1 text-sm font-semibold text-white">{studioLocked ? "Secured" : "Not locked"}</p>
+                    <p className="text-xs text-white/60">{studioLocked ? `Failed unlock attempts: ${lockSnapshot?.unlockFailedAttempts ?? 0}` : "Password lock available"}</p>
+                  </div>
+                </div>
+                <div className="mt-5 flex flex-wrap gap-3">
+                  <Button onClick={handleGenerateTasks} disabled={!hasLinkedLead} className="bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50">
+                    <SquareStack className="mr-2 h-4 w-4" /> Generate Tasks
                   </Button>
+                  {!studioLocked ? (
+                    <Button variant="outline" className="border-white/25 bg-white/5 text-white hover:bg-white/10" onClick={handleOpenEditStudio}>
+                      <Pencil className="mr-2 h-4 w-4" /> Edit
+                    </Button>
+                  ) : (
+                    <Button variant="outline" className="border-white/25 bg-white/5 text-white hover:bg-white/10" onClick={handleOpenEditStudio}>
+                      <Pencil className="mr-2 h-4 w-4" /> View Only
+                    </Button>
+                  )}
+                  {!studioLocked ? (
+                    <Button
+                      variant="outline"
+                      className="border-white/25 bg-white/5 text-white hover:bg-white/10 disabled:opacity-50"
+                      onClick={handleLock}
+                      disabled={!hasLinkedLead}
+                    >
+                      <Lock className="mr-2 h-4 w-4" /> Lock
+                    </Button>
+                  ) : null}
                   <Button
-                    onClick={() => void handleSaveStudio(true)}
-                    disabled={studioLocked}
                     variant="outline"
-                    className="border-blue-300/35 bg-blue-500/10 text-white hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="border-white/25 bg-white/5 text-white hover:bg-white/10 disabled:opacity-50"
+                    onClick={handleConvertToProject}
+                    disabled={!hasLinkedLead}
                   >
-                    Save as New Version
+                    <Rocket className="mr-2 h-4 w-4" /> Convert to Project
                   </Button>
-                  <Button variant="outline" className="border-white/25 bg-white/5 text-white hover:bg-white/10" onClick={handleCancelStudio}>
-                    <X className="mr-2 h-4 w-4" /> Cancel
+                  {!studioLocked ? (
+                    <Button
+                      variant="outline"
+                      className="border-white/25 bg-white/5 text-white hover:bg-white/10 disabled:opacity-50"
+                      onClick={handleRegenerate}
+                      disabled={!hasLinkedLead}
+                    >
+                      <RefreshCw className="mr-2 h-4 w-4" /> Regenerate AI
+                    </Button>
+                  ) : null}
+                  {studioLocked && isAdmin ? (
+                    <Button variant="outline" className="border-amber-300/40 bg-amber-500/10 text-amber-50 hover:bg-amber-500/20" onClick={handleUnlock}>
+                      <Lock className="mr-2 h-4 w-4" /> Unlock
+                    </Button>
+                  ) : null}
+                  <Button
+                    variant="outline"
+                    className="border-white/25 bg-white/5 text-white hover:bg-white/10 disabled:opacity-50"
+                    onClick={handleResendLink}
+                    disabled={!hasLinkedLead}
+                  >
+                    <ArrowRight className="mr-2 h-4 w-4" /> Resend Link
                   </Button>
                 </div>
-              </div>
-            </div>
-
-            <div className="grid min-h-0 flex-1 gap-4 p-4 lg:grid-cols-[1.2fr_0.8fr] lg:p-6">
-              <div className="space-y-4 overflow-y-auto pr-1">
-                {studioLocked ? (
-                  <section className="rounded-xl border border-amber-300/35 bg-amber-500/10 p-4 text-amber-100">
-                    <p className="flex items-center gap-2 text-sm font-semibold">
-                      <Lock className="h-4 w-4" /> Editing disabled (Requirement locked)
-                    </p>
-                  </section>
-                ) : null}
-
-                <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                  <h3 className="text-sm font-semibold uppercase tracking-wide text-blue-100">Core Info</h3>
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    <Input
-                      value={draftForm.businessName}
-                      onChange={(e) => updateDraftField("businessName", e.target.value)}
-                      disabled={studioLocked}
-                      placeholder="Business name"
-                      className="border-white/20 bg-white/5 text-white"
-                    />
-                    <Input
-                      value={draftForm.projectType}
-                      onChange={(e) => updateDraftField("projectType", e.target.value as ClientIntakeForm["projectType"])}
-                      disabled={studioLocked}
-                      placeholder="Project type"
-                      className="border-white/20 bg-white/5 text-white"
-                    />
-                  </div>
-                  <Input
-                    value={draftForm.goal}
-                    onChange={(e) => updateDraftField("goal", e.target.value)}
-                    disabled={studioLocked}
-                    placeholder="Goal"
-                    className="mt-3 border-white/20 bg-white/5 text-white"
-                  />
-                </section>
-
-                <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="text-sm font-semibold uppercase tracking-wide text-blue-100">Features</h3>
-                    <Input
-                      value={featureSearch}
-                      onChange={(e) => setFeatureSearch(e.target.value)}
-                      placeholder="Search features"
-                      className="h-8 w-full border-white/20 bg-white/5 text-white sm:w-52"
-                    />
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {(Object.keys(FEATURE_LIBRARY) as FeatureCategory[]).map((category) => (
-                      <button
-                        key={category}
-                        type="button"
-                        onClick={() => setActiveFeatureCategory(category)}
-                        className={`rounded-full border px-3 py-1 text-xs transition ${
-                          activeFeatureCategory === category
-                            ? "border-blue-300/60 bg-blue-500/30 text-white"
-                            : "border-white/20 bg-white/5 text-white/75 hover:border-blue-300/40"
-                        }`}
-                      >
-                        {category}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {FEATURE_LIBRARY[activeFeatureCategory]
-                      .filter((feature) => feature.toLowerCase().includes(featureSearch.trim().toLowerCase()))
-                      .map((feature) => {
-                        const active = draftForm.features.includes(feature);
-                        return (
-                          <button
-                            key={feature}
-                            type="button"
-                            onClick={() => toggleDraftChip("features", feature)}
-                            disabled={studioLocked}
-                            className={`rounded-full border px-3 py-1 text-xs transition ${
-                              active
-                                ? "border-blue-300/60 bg-blue-500/30 text-white"
-                                : "border-white/20 bg-white/5 text-white/75 hover:border-blue-300/35"
-                            } disabled:cursor-not-allowed disabled:opacity-50`}
-                          >
-                            {feature}
-                          </button>
-                        );
-                      })}
-                  </div>
-                </section>
-
-                <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                  <h3 className="text-sm font-semibold uppercase tracking-wide text-blue-100">User Roles</h3>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {ROLE_PRESETS.map((role) => {
-                      const active = draftForm.userRoles.includes(role);
-                      return (
-                        <button
-                          key={role}
-                          type="button"
-                          onClick={() => toggleDraftChip("userRoles", role)}
-                          disabled={studioLocked}
-                          className={`rounded-full border px-3 py-1 text-xs transition ${
-                            active
-                              ? "border-emerald-300/50 bg-emerald-500/25 text-white"
-                              : "border-white/20 bg-white/5 text-white/75 hover:border-emerald-300/35"
-                          } disabled:cursor-not-allowed disabled:opacity-50`}
-                        >
-                          {role}
-                        </button>
-                      );
-                    })}
-                    {draftForm.userRoles
-                      .filter((role) => !ROLE_PRESETS.includes(role))
-                      .map((role) => (
-                        <Badge key={role} variant="outline" className="border-emerald-300/40 bg-emerald-500/20 text-emerald-100">
-                          {role}
-                        </Badge>
-                      ))}
-                  </div>
-                  <div className="mt-3 flex gap-2">
-                    <Input
-                      value={customRole}
-                      onChange={(e) => setCustomRole(e.target.value)}
-                      disabled={studioLocked}
-                      placeholder="Custom role"
-                      className="border-white/20 bg-white/5 text-white"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="border-white/25 bg-white/5 text-white hover:bg-white/10"
-                      disabled={studioLocked}
-                      onClick={() => {
-                        addDraftChip("userRoles", customRole);
-                        setCustomRole("");
-                      }}
-                    >
-                      Add
-                    </Button>
-                  </div>
-                </section>
-
-                <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                  <h3 className="text-sm font-semibold uppercase tracking-wide text-blue-100">Modules / Pages</h3>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {MODULE_PRESETS.map((moduleName) => {
-                      const active = draftForm.modules.includes(moduleName);
-                      return (
-                        <button
-                          key={moduleName}
-                          type="button"
-                          onClick={() => toggleDraftChip("modules", moduleName)}
-                          disabled={studioLocked}
-                          className={`rounded-full border px-3 py-1 text-xs transition ${
-                            active
-                              ? "border-cyan-300/50 bg-cyan-500/25 text-white"
-                              : "border-white/20 bg-white/5 text-white/75 hover:border-cyan-300/35"
-                          } disabled:cursor-not-allowed disabled:opacity-50`}
-                        >
-                          {moduleName}
-                        </button>
-                      );
-                    })}
-                    {draftForm.modules
-                      .filter((moduleName) => !MODULE_PRESETS.includes(moduleName))
-                      .map((moduleName) => (
-                        <Badge key={moduleName} variant="outline" className="border-cyan-300/40 bg-cyan-500/20 text-cyan-100">
-                          {moduleName}
-                        </Badge>
-                      ))}
-                  </div>
-                  <div className="mt-3 flex gap-2">
-                    <Input
-                      value={customModule}
-                      onChange={(e) => setCustomModule(e.target.value)}
-                      disabled={studioLocked}
-                      placeholder="Add page"
-                      className="border-white/20 bg-white/5 text-white"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="border-white/25 bg-white/5 text-white hover:bg-white/10"
-                      disabled={studioLocked}
-                      onClick={() => {
-                        addDraftChip("modules", customModule);
-                        setCustomModule("");
-                      }}
-                    >
-                      Add Page
-                    </Button>
-                  </div>
-                </section>
-
-                <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-sm font-semibold uppercase tracking-wide text-blue-100">Description</h3>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="border-blue-300/35 bg-blue-500/10 text-blue-100 hover:bg-blue-500/20"
-                      onClick={handleImproveDescription}
-                      disabled={studioLocked || isImprovingDescription}
-                    >
-                      <Sparkles className="mr-2 h-4 w-4" /> {isImprovingDescription ? "Improving..." : "Improve description"}
-                    </Button>
-                  </div>
-                  <Textarea
-                    value={draftForm.ideaDescription}
-                    onChange={(e) => updateDraftField("ideaDescription", e.target.value)}
-                    disabled={studioLocked}
-                    placeholder="Describe project scope"
-                    className="mt-3 min-h-[150px] border-white/20 bg-white/5 text-white"
-                  />
-                </section>
-              </div>
-
-              <div className="space-y-4 overflow-y-auto pr-1">
-                <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                  <p className="text-sm font-semibold text-blue-100">Impact Analysis</p>
-                  <div className="mt-3 space-y-2 text-sm text-white/85">
-                    <p>Budget: {formatCurrency(studioImpact.baseBudget)} → {formatCurrency(studioImpact.nextBudget)}</p>
-                    <p>Timeline: {studioImpact.baseTimeline} → {studioImpact.nextTimeline} days</p>
-                    <p>Complexity: {studioImpact.baseComplexity} → {studioImpact.nextComplexity}</p>
-                  </div>
-                </section>
-
-                <section className="rounded-2xl border border-amber-300/25 bg-amber-500/10 p-5">
-                  <p className="flex items-center gap-2 text-sm font-semibold text-amber-100">
-                    <AlertTriangle className="h-4 w-4" /> Validation
+                <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-white/65">
+                  <p>Lifecycle: Pending → Submitted → Verified → Locked</p>
+                  <p className="mt-1">
+                    Access: {requirementBundle?.clientLink?.id || requirementBundle?.intake?.id || "Not available"} · Intake link: {selectedLead ? getClientIntakeLinkForLead(selectedLead).replace(/^https?:\/\//, "") : "Not available"}
                   </p>
-                  <div className="mt-3 space-y-1 text-sm text-amber-50/95">
-                    {studioIssues.length ? studioIssues.map((issue) => <p key={issue}>- {issue}</p>) : <p>- No critical validation issues.</p>}
-                  </div>
-                </section>
-
-                <section className="rounded-2xl border border-emerald-300/25 bg-emerald-500/10 p-5">
-                  <p className="text-sm font-semibold text-emerald-100">Smart Suggestions</p>
-                  <div className="mt-3 space-y-1 text-sm text-emerald-50/95">
-                    {studioSuggestions.length ? studioSuggestions.map((item) => <p key={item}>✔ {item}</p>) : <p>✔ Scope already looks healthy.</p>}
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="mt-3 border-emerald-300/35 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/20"
-                    onClick={handleAutoFixStudio}
-                    disabled={studioLocked}
-                  >
-                    <Sparkles className="mr-2 h-4 w-4" /> Fix issues automatically
-                  </Button>
-                </section>
-
-                <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                  <p className="text-sm font-semibold text-blue-100">Completeness Score</p>
-                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-                    <div className="h-full rounded-full bg-blue-400" style={{ width: `${studioCompleteness}%` }} />
-                  </div>
-                  <p className="mt-2 text-sm text-white/85">Completion: {studioCompleteness}%</p>
-                </section>
-
-                <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                  <p className="text-sm font-semibold text-blue-100">Change Highlighting</p>
-                  <div className="mt-3 space-y-2 text-sm text-white/85">
-                    {studioChanges.length ? (
-                      studioChanges.map((change) => (
-                        <p key={change.key}>
-                          <span className="text-blue-100">{change.key}:</span> {change.before} → {change.after}
-                        </p>
-                      ))
-                    ) : (
-                      <p>No changes yet.</p>
-                    )}
-                  </div>
-                </section>
-
-                <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                  <p className="text-sm font-semibold text-blue-100">Live Task Preview</p>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-white/60">Frontend</p>
-                      <div className="mt-1 space-y-1 text-sm text-white/85">
-                        {studioTaskPreview.frontend.length ? studioTaskPreview.frontend.map((item) => <p key={item}>+ {item}</p>) : <p>+ Baseline UI tasks</p>}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-white/60">Backend</p>
-                      <div className="mt-1 space-y-1 text-sm text-white/85">
-                        {studioTaskPreview.backend.length ? studioTaskPreview.backend.map((item) => <p key={item}>+ {item}</p>) : <p>+ Baseline API tasks</p>}
-                      </div>
-                    </div>
-                  </div>
-                </section>
-
-                <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                  <p className="text-sm font-semibold text-blue-100">Goal Alignment Check</p>
-                  <div className="mt-3 space-y-1 text-sm text-white/85">
-                    {studioGoalChecks.map((item) => (
-                      <p key={item.label} className="flex items-start gap-2">
-                        {item.ok ? <Check className="mt-0.5 h-4 w-4 text-emerald-300" /> : <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-300" />}
-                        <span>{item.label}</span>
-                      </p>
-                    ))}
-                  </div>
-                </section>
-              </div>
+                  <p className="mt-1 flex items-center gap-2"><Bot className="h-3.5 w-3.5" /> Last AI refresh: {formatRelativeTime(lastUpdated)}</p>
+                </div>
+              </section>
             </div>
-          </div>
+          )}
         </div>
-      ) : null}
+      </div>
 
-      <Dialog open={isLockDialogOpen} onOpenChange={setIsLockDialogOpen}>
-        <DialogContent className="max-w-2xl border border-blue-300/20 bg-[#0a1224] text-white">
+      <Dialog open={isRefining} onOpenChange={setIsRefining}>
+        <DialogContent className="max-w-7xl bg-[#0a1224] text-white border-blue-400/30">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-white">
-              <Lock className="h-4 w-4" /> Lock this requirement?
-            </DialogTitle>
-            <DialogDescription className="text-white/70">
-              This freezes the current requirement as the final execution version. Editing will be disabled after lock.
+            <DialogTitle>Requirement Refinement Studio</DialogTitle>
+            <DialogDescription>
+              {studioLocked ? "Viewing locked requirement. Unlock to make changes." : "Refine and lock the client's project requirements."}
             </DialogDescription>
           </DialogHeader>
+          <div className="grid max-h-[78vh] grid-cols-1 gap-6 overflow-y-auto p-1 xl:grid-cols-[1.15fr_0.85fr]">
+            <div className="space-y-4">
+              <section className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-semibold text-blue-200">Requirement Coverage</h3>
+                    <p className="text-xs text-white/60">Current draft completeness: {draftCompleteness}%</p>
+                  </div>
+                  <Badge variant="outline" className="border-cyan-300/30 bg-cyan-500/10 text-cyan-100">
+                    {draftIssues.length ? `${draftIssues.length} gaps` : "Complete"}
+                  </Badge>
+                </div>
+                <div className="h-2 rounded-full bg-white/10">
+                  <div className="h-2 rounded-full bg-gradient-to-r from-cyan-400 via-blue-400 to-violet-400" style={{ width: `${draftCompleteness}%` }} />
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                    <p className="text-xs uppercase tracking-wide text-white/50">Missing items</p>
+                    <p className="mt-1 text-lg font-semibold text-white">{draftIssues.length}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                    <p className="text-xs uppercase tracking-wide text-white/50">Selected files</p>
+                    <p className="mt-1 text-lg font-semibold text-white">{refinementForm.uploadedFiles.length}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                    <p className="text-xs uppercase tracking-wide text-white/50">AI suggestions</p>
+                    <p className="mt-1 text-lg font-semibold text-white">{draftSuggestions.length}</p>
+                  </div>
+                </div>
+              </section>
 
-          <div className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white/80">
-                <p className="text-xs uppercase tracking-wide text-white/50">Completion</p>
-                <p className="mt-1 font-semibold text-white">{lockValidation?.completionPercent ?? completeness.percent}%</p>
-              </div>
-              <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white/80">
-                <p className="text-xs uppercase tracking-wide text-white/50">Lock score</p>
-                <p className="mt-1 font-semibold text-white">{lockValidation?.lockScore ?? lockScore}%</p>
-              </div>
-            </div>
+              <section className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                <h3 className="mb-4 font-semibold text-blue-200">Business & Contact</h3>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Input value={refinementForm.businessName} onChange={(e) => setRefinementForm({ ...refinementForm, businessName: e.target.value })} placeholder="Business name" className="bg-white/5" disabled={studioLocked} />
+                  <Input value={refinementForm.industry} onChange={(e) => setRefinementForm({ ...refinementForm, industry: e.target.value })} placeholder="Industry" className="bg-white/5" disabled={studioLocked} />
+                  <Input value={refinementForm.contactName} onChange={(e) => setRefinementForm({ ...refinementForm, contactName: e.target.value })} placeholder="Contact person" className="bg-white/5" disabled={studioLocked} />
+                  <select value={refinementForm.companySize} onChange={(e) => setRefinementForm({ ...refinementForm, companySize: e.target.value })} className="h-10 rounded-md border border-white/10 bg-white/5 px-3 text-sm text-white outline-none ring-0" disabled={studioLocked}>
+                    <option value="" className="bg-[#0a1224]">Company size</option>
+                    {COMPANY_SIZE_OPTIONS.map((option) => (
+                      <option key={option} value={option} className="bg-[#0a1224]">{option}</option>
+                    ))}
+                  </select>
+                  <Input value={refinementForm.email} onChange={(e) => setRefinementForm({ ...refinementForm, email: e.target.value })} placeholder="Email" className="bg-white/5" disabled={studioLocked} />
+                  <Input value={refinementForm.phone} onChange={(e) => setRefinementForm({ ...refinementForm, phone: e.target.value })} placeholder="Phone" className="bg-white/5" disabled={studioLocked} />
+                  <Input value={refinementForm.targetAudience} onChange={(e) => setRefinementForm({ ...refinementForm, targetAudience: e.target.value })} placeholder="Target audience" className="bg-white/5 md:col-span-2" disabled={studioLocked} />
+                </div>
+              </section>
 
-            <div className="rounded-xl border border-amber-300/25 bg-amber-500/10 p-4 text-amber-50">
-              <p className="flex items-center gap-2 text-sm font-semibold">
-                <AlertTriangle className="h-4 w-4" /> Missing checks
-              </p>
-              <div className="mt-2 space-y-1 text-sm text-amber-50/90">
-                {(lockValidation?.missing.length ? lockValidation.missing : lockMissing).length ? (
-                  (lockValidation?.missing.length ? lockValidation.missing : lockMissing).map((item) => <p key={item}>- {item}</p>)
-                ) : (
-                  <p>- No blockers detected</p>
-                )}
-              </div>
-            </div>
+              <section className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                <h3 className="mb-4 font-semibold text-blue-200">Scope & Delivery</h3>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <select value={refinementForm.projectType} onChange={(e) => setRefinementForm({ ...refinementForm, projectType: e.target.value as ClientIntakeForm["projectType"] })} className="h-10 rounded-md border border-white/10 bg-white/5 px-3 text-sm text-white outline-none ring-0" disabled={studioLocked}>
+                    {PROJECT_TYPE_OPTIONS.map((option) => (
+                      <option key={option} value={option} className="bg-[#0a1224]">{option}</option>
+                    ))}
+                  </select>
+                  <select value={refinementForm.priority} onChange={(e) => setRefinementForm({ ...refinementForm, priority: e.target.value as ClientIntakeForm["priority"] })} className="h-10 rounded-md border border-white/10 bg-white/5 px-3 text-sm text-white outline-none ring-0" disabled={studioLocked}>
+                    {PRIORITY_OPTIONS.map((option) => (
+                      <option key={option} value={option} className="bg-[#0a1224]">{option}</option>
+                    ))}
+                  </select>
+                  <select value={refinementForm.selectedPackage} onChange={(e) => setRefinementForm({ ...refinementForm, selectedPackage: e.target.value as ClientIntakeForm["selectedPackage"] })} className="h-10 rounded-md border border-white/10 bg-white/5 px-3 text-sm text-white outline-none ring-0" disabled={studioLocked}>
+                    {PACKAGE_OPTIONS.map((option) => (
+                      <option key={option} value={option} className="bg-[#0a1224]">{option}</option>
+                    ))}
+                  </select>
+                  <Input type="date" value={refinementForm.deadline} onChange={(e) => setRefinementForm({ ...refinementForm, deadline: e.target.value })} className="bg-white/5" disabled={studioLocked} />
+                  <Input type="number" value={refinementForm.budget || ""} onChange={(e) => setRefinementForm({ ...refinementForm, budget: Number(e.target.value) || 0 })} placeholder="Budget" className="bg-white/5" disabled={studioLocked} />
+                  <Input type="number" value={refinementForm.estimatedPrice || ""} onChange={(e) => setRefinementForm({ ...refinementForm, estimatedPrice: Number(e.target.value) || 0 })} placeholder="Estimated price" className="bg-white/5" disabled={studioLocked} />
+                  <Input value={refinementForm.meetingSlot} onChange={(e) => setRefinementForm({ ...refinementForm, meetingSlot: e.target.value })} placeholder="Meeting slot" className="bg-white/5 md:col-span-2" disabled={studioLocked} />
+                  <Input value={refinementForm.goal} onChange={(e) => setRefinementForm({ ...refinementForm, goal: e.target.value })} placeholder="Primary business goal" className="bg-white/5 md:col-span-2" disabled={studioLocked} />
+                </div>
+                <div className="relative mt-3">
+                  <Textarea value={refinementForm.ideaDescription} onChange={(e) => setRefinementForm({ ...refinementForm, ideaDescription: e.target.value })} placeholder="Detailed project description" className="h-44 bg-white/5" disabled={studioLocked} />
+                  {!studioLocked ? (
+                    <Button size="sm" variant="outline" className="absolute bottom-2 right-2 border-blue-300/30 bg-blue-500/10 text-blue-100 hover:bg-blue-500/20" onClick={handleRefineWithAI}>
+                      <Sparkles className="mr-2 h-3.5 w-3.5" /> Refine with AI
+                    </Button>
+                  ) : null}
+                </div>
+              </section>
 
-            <div className="grid gap-3 md:grid-cols-2">
-              <div>
-                <p className="mb-2 text-sm text-white/70">Password</p>
-                <Input
-                  value={lockPassword}
-                  onChange={(e) => setLockPassword(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                  inputMode="numeric"
-                  maxLength={4}
-                  type="password"
-                  placeholder="4-digit code"
-                  className="border-white/20 bg-white/5 text-white placeholder:text-white/40"
+              <section className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h3 className="font-semibold text-blue-200">Notes, Terms, and Files</h3>
+                  <span className="text-xs text-white/55">Use this section for launch constraints, approvals, and reference assets</span>
+                </div>
+                <Textarea
+                  value={refinementForm.suggestionNotes.join("\n")}
+                  onChange={(e) => setRefinementForm({ ...refinementForm, suggestionNotes: e.target.value.split(/\r?\n/).map((note) => note.trim()).filter(Boolean) })}
+                  placeholder="Add launch constraints, approval steps, non-functional requirements, or special notes. One note per line."
+                  className="h-28 bg-white/5"
+                  disabled={studioLocked}
                 />
-              </div>
-              <div>
-                <p className="mb-2 text-sm text-white/70">Confirm password</p>
-                <Input
-                  value={lockConfirmPassword}
-                  onChange={(e) => setLockConfirmPassword(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                  inputMode="numeric"
-                  maxLength={4}
-                  type="password"
-                  placeholder="Confirm code"
-                  className="border-white/20 bg-white/5 text-white placeholder:text-white/40"
-                />
-              </div>
+                <div className="mt-3 flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3">
+                  <Checkbox id="termsAccepted" checked={refinementForm.termsAccepted} onCheckedChange={(checked) => setRefinementForm({ ...refinementForm, termsAccepted: Boolean(checked) })} disabled={studioLocked} />
+                  <label htmlFor="termsAccepted" className="text-sm text-white/80">Terms accepted for the requirement package</label>
+                </div>
+                <div className="mt-4 space-y-3">
+                  <p className="text-sm font-medium text-white">Uploaded files</p>
+                  {refinementForm.uploadedFiles.length ? (
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {refinementForm.uploadedFiles.map((file) => (
+                        <div key={`${file.name}-${file.lastModified ?? file.size}`} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-medium text-white">{file.name}</p>
+                              <p className="text-xs text-white/55">{getAssetTag(file)} · {formatFileSize(file.size)}</p>
+                            </div>
+                            <Badge variant="outline" className="border-white/15 bg-black/20 text-[10px] uppercase tracking-wide text-white/60">{file.isImage ? "Image" : "File"}</Badge>
+                          </div>
+                          {file.previewUrl ? (
+                            <img src={file.previewUrl} alt={file.name} className="mt-3 h-28 w-full rounded-lg object-cover" />
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-white/55">No supporting files uploaded yet.</p>
+                  )}
+                </div>
+              </section>
             </div>
 
-            <label className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white/80">
-              <Checkbox checked={lockOverride} onCheckedChange={(checked) => setLockOverride(Boolean(checked))} />
-              <span>
-                Override warnings and lock anyway
-                <span className="block text-xs text-white/55">Use this when the validation panel shows non-blocking gaps.</span>
-              </span>
-            </label>
+            <div className="space-y-4">
+              <section className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                <h3 className="mb-3 font-semibold text-blue-200">Feature Matrix</h3>
+                <div className="space-y-3">
+                  {Object.entries(FEATURE_LIBRARY).map(([category, features]) => (
+                    <div key={category} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                      <p className="mb-2 text-xs uppercase tracking-wide text-white/60">{category}</p>
+                      <div className="grid grid-cols-2 gap-2 xl:grid-cols-1">
+                        {features.map((feature) => (
+                          <div key={feature} className="flex items-center gap-2">
+                            <Checkbox
+                              id={`feature-${feature}`}
+                              checked={refinementForm.features.includes(feature)}
+                              onCheckedChange={(checked) => {
+                                const newFeatures = checked ? [...refinementForm.features, feature] : refinementForm.features.filter((f) => f !== feature);
+                                setRefinementForm({ ...refinementForm, features: newFeatures });
+                              }}
+                              disabled={studioLocked}
+                            />
+                            <label htmlFor={`feature-${feature}`} className="text-xs text-white/80">{feature}</label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
 
-            {lockDialogError ? <p className="text-sm text-rose-300">{lockDialogError}</p> : null}
+              <section className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                <h3 className="mb-3 font-semibold text-blue-200">User Roles</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {ROLE_PRESETS.map((role) => (
+                    <div key={role} className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                      <Checkbox
+                        id={`role-${role}`}
+                        checked={refinementForm.userRoles.includes(role)}
+                        onCheckedChange={(checked) => {
+                          const newRoles = checked ? [...refinementForm.userRoles, role] : refinementForm.userRoles.filter((r) => r !== role);
+                          setRefinementForm({ ...refinementForm, userRoles: newRoles });
+                        }}
+                        disabled={studioLocked}
+                      />
+                      <label htmlFor={`role-${role}`} className="text-xs text-white/80">{role}</label>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                <h3 className="mb-3 font-semibold text-blue-200">Modules / Pages</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {MODULE_PRESETS.map((moduleName) => (
+                    <div key={moduleName} className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                      <Checkbox
+                        id={`module-${moduleName}`}
+                        checked={refinementForm.modules.includes(moduleName)}
+                        onCheckedChange={(checked) => {
+                          const newModules = checked ? [...refinementForm.modules, moduleName] : refinementForm.modules.filter((m) => m !== moduleName);
+                          setRefinementForm({ ...refinementForm, modules: newModules });
+                        }}
+                        disabled={studioLocked}
+                      />
+                      <label htmlFor={`module-${moduleName}`} className="text-xs text-white/80">{moduleName}</label>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                <h3 className="mb-3 font-semibold text-blue-200">AI Coverage Preview</h3>
+                <div className="space-y-3 text-sm text-white/75">
+                  <p>{aiSummary}</p>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                    <p className="text-xs uppercase tracking-wide text-white/50">Missing coverage</p>
+                    {draftIssues.length ? (
+                      <ul className="mt-2 space-y-1 text-xs text-white/70">
+                        {draftIssues.slice(0, 6).map((issue) => (
+                          <li key={issue}>• {issue}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-2 text-xs text-emerald-200">All primary requirement sections are filled in.</p>
+                    )}
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                    <p className="text-xs uppercase tracking-wide text-white/50">Suggested next steps</p>
+                    <ul className="mt-2 space-y-1 text-xs text-white/70">
+                      {draftSuggestions.length ? draftSuggestions.slice(0, 5).map((suggestion) => <li key={suggestion}>• {suggestion}</li>) : <li>• Requirement looks ready to lock.</li>}
+                    </ul>
+                  </div>
+                </div>
+              </section>
+            </div>
           </div>
-
           <DialogFooter>
-            <Button variant="outline" className="border-white/20 bg-white/5 text-white hover:bg-white/10" onClick={() => setIsLockDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              className="bg-blue-600 text-white hover:bg-blue-500"
-              onClick={() => void submitLock(lockOverride)}
-              disabled={isLockSubmitting}
-            >
-              {isLockSubmitting ? "Locking..." : "Lock Requirement"}
-            </Button>
+            <Button variant="outline" onClick={() => setIsRefining(false)}>Cancel</Button>
+            {!studioLocked ? <Button onClick={handleSaveRefinement} className="bg-blue-600 text-white hover:bg-blue-500">Save Requirement</Button> : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isUnlockDialogOpen} onOpenChange={setIsUnlockDialogOpen}>
-        <DialogContent className="max-w-2xl border border-amber-300/20 bg-[#0a1224] text-white">
+      <Dialog open={isLocking} onOpenChange={setIsLocking}>
+        <DialogContent className="bg-[#0a1224] text-white border-blue-400/30">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-white">
-              <Lock className="h-4 w-4" /> Unlock requirement?
-            </DialogTitle>
-            <DialogDescription className="text-white/70">
-              Unlocking re-opens editing and may affect project and task generation.
+            <DialogTitle>Lock Requirement</DialogTitle>
+            <DialogDescription>
+              Enter a password to lock this requirement. This action is reversible only by an admin.
             </DialogDescription>
           </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-white/80">
-              <p>Failed attempts: {lockSnapshot?.unlockFailedAttempts ?? 0}/3</p>
-              <p className="mt-1">Blocked until: {lockSnapshot?.unlockBlockedUntil ? formatDateTime(lockSnapshot.unlockBlockedUntil) : "Not blocked"}</p>
-            </div>
-
-            {isAdmin ? (
-              <label className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white/80">
-                <Checkbox checked={unlockOverride} onCheckedChange={(checked) => setUnlockOverride(Boolean(checked))} />
-                <span>
-                  Admin override without password
-                  <span className="block text-xs text-white/55">Use only when you need to restore editing quickly.</span>
-                </span>
-              </label>
-            ) : null}
-
-            <div>
-              <p className="mb-2 text-sm text-white/70">Password</p>
-              <Input
-                value={unlockPassword}
-                onChange={(e) => setUnlockPassword(e.target.value)}
-                disabled={unlockOverride}
-                type="password"
-                placeholder="Enter lock password"
-                className="border-white/20 bg-white/5 text-white placeholder:text-white/40 disabled:cursor-not-allowed disabled:opacity-50"
-              />
-            </div>
-
-            {unlockDialogError ? <p className="text-sm text-rose-300">{unlockDialogError}</p> : null}
+          <div className="space-y-2">
+            <Input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter lock password"
+              className="bg-white/5"
+            />
+            <p className="text-xs text-white/60">This password will be required to unlock and edit later.</p>
           </div>
-
           <DialogFooter>
-            <Button variant="outline" className="border-white/20 bg-white/5 text-white hover:bg-white/10" onClick={() => setIsUnlockDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              className="bg-amber-500 text-white hover:bg-amber-400"
-              onClick={() => void submitUnlock(unlockOverride)}
-              disabled={isUnlockSubmitting}
-            >
-              {isUnlockSubmitting ? "Unlocking..." : unlockOverride ? "Unlock as Admin" : "Unlock"}
-            </Button>
+            <Button variant="outline" onClick={() => setIsLocking(false)}>Cancel</Button>
+            <Button onClick={handleConfirmLock} className="bg-blue-600 text-white hover:bg-blue-500">Confirm Lock</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isUnlocking} onOpenChange={setIsUnlocking}>
+        <DialogContent className="bg-[#0a1224] text-white border-blue-400/30">
+          <DialogHeader>
+            <DialogTitle>Unlock Requirement</DialogTitle>
+            <DialogDescription>
+              Enter the password to unlock and allow editing.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter lock password"
+              className="bg-white/5"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsUnlocking(false)}>Cancel</Button>
+            <Button onClick={handleConfirmUnlock} className="bg-amber-500 text-white hover:bg-amber-400">Confirm Unlock</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

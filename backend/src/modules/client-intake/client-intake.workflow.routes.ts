@@ -31,14 +31,20 @@ type IntakePayload = {
   email?: string;
   phone?: string;
   projectType?: string;
+  goal?: string;
   features?: string[];
+  userRoles?: string[];
+  modules?: string[];
   ideaDescription?: string;
+  targetAudience?: string;
   budget?: number;
   deadline?: string;
+  priority?: string;
   selectedPackage?: string;
   uploadedFiles?: IntakeFile[];
   meetingSlot?: string;
   estimatedPrice?: number;
+  suggestionNotes?: string[];
 };
 
 type LockRequestPayload = {
@@ -131,19 +137,23 @@ function fallbackSummary(businessName: string, projectType: string, features: st
   return `${businessName} is planning a ${projectType} product${preview} to accelerate business growth and user outcomes. The initiative is positioned as a high-impact delivery with clear execution priorities.`;
 }
 
-function buildRequirementAnalysis(intake: IntakePayload) {
-  const features = normalizeArray(intake.features, []);
+function buildFallbackRequirementAnalysis(intake: IntakePayload) {
+  const features = normalizeArray(intake.features, []).map((item) => String(item || "").trim()).filter(Boolean);
+  const userRoles = normalizeArray(intake.userRoles, []).map((item) => String(item || "").trim()).filter(Boolean);
+  const selectedModules = normalizeArray(intake.modules, []).map((item) => String(item || "").trim()).filter(Boolean);
   const summary = `${toSafeString(intake.businessName, "Client")} needs a ${toSafeString(intake.projectType, "digital")} solution focused on ${
     features.length ? features.join(", ") : "core business goals"
   }.`;
 
-  const modules = [
-    "Discovery & UX",
-    "Frontend Experience",
-    "Backend Services",
-    features.some((item) => /payment/i.test(item)) ? "Payment Integration" : "3rd Party Integrations",
-    "QA & Launch",
-  ];
+  const modules = selectedModules.length
+    ? selectedModules
+    : [
+        "Discovery & UX",
+        "Frontend Experience",
+        "Backend Services",
+        features.some((item) => /payment/i.test(item)) ? "Payment Integration" : "3rd Party Integrations",
+        "QA & Launch",
+      ];
 
   const structuredItems = features.map((feature) => {
     const lower = feature.toLowerCase();
@@ -153,7 +163,7 @@ function buildRequirementAnalysis(intake: IntakePayload) {
       ? "Backend"
       : /payment|gateway|integration|webhook/.test(lower)
       ? "API"
-      : "General";
+      : "Business";
 
     return {
       label: `[${bucket}] ${feature}`,
@@ -163,10 +173,19 @@ function buildRequirementAnalysis(intake: IntakePayload) {
   });
 
   const analysis = {
+    businessType: toSafeString(intake.projectType, "digital"),
+    goal: toSafeString(intake.goal, toSafeString(intake.ideaDescription, "business growth")),
+    targetAudience: toSafeString(intake.targetAudience, "end users"),
+    priority: toSafeString(intake.priority, "medium"),
+    package: toSafeString(intake.selectedPackage, "growth"),
     budget: toSafeNumber(intake.budget, toSafeNumber(intake.estimatedPrice)),
     timeline: toSafeString(intake.deadline, "To be finalized"),
-    package: toSafeString(intake.selectedPackage, "growth"),
-    risk: structuredItems.length >= 6 ? "medium" : "low",
+    confidence: structuredItems.length >= 6 ? 0.78 : 0.62,
+    successMetrics: ["Stakeholder sign-off", "On-time launch", "Stable integrations"],
+    risks: structuredItems.length >= 6 ? ["Scope creep", "Integration risk"] : ["Standard delivery risk"],
+    recommendations: ["Confirm acceptance criteria", "Freeze scope", "Align API contracts"],
+    roles: userRoles,
+    items: structuredItems,
   };
 
   return {
@@ -176,6 +195,133 @@ function buildRequirementAnalysis(intake: IntakePayload) {
     analysis,
     items: structuredItems,
   };
+}
+
+function normalizeRequirementFeatureList(value: unknown, fallback: string[]) {
+  return normalizeArray<string>(value, fallback)
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
+async function buildRequirementAnalysis(intake: IntakePayload) {
+  const features = normalizeRequirementFeatureList(intake.features, []);
+  const userRoles = normalizeRequirementFeatureList(intake.userRoles, []);
+  const modules = normalizeRequirementFeatureList(intake.modules, []);
+  const uploadedFiles = normalizeArray(intake.uploadedFiles, []).slice(0, 8);
+  const fallback = buildFallbackRequirementAnalysis({ ...intake, features, userRoles, modules });
+
+  const prompt = [
+    "You are a senior product requirements analyst who understands each lead deeply.",
+    "Generate a complete requirement analysis for the lead.",
+    "Return strict JSON only with this exact shape:",
+    "{",
+    '  "summary": "string",',
+    '  "features": ["string"],',
+    '  "modules": ["string"],',
+    '  "analysis": {',
+    '    "businessType": "string",',
+    '    "goal": "string",',
+    '    "targetAudience": "string",',
+    '    "priority": "string",',
+    '    "package": "string",',
+    '    "budget": 0,',
+    '    "timeline": "string",',
+    '    "confidence": 0.0,',
+    '    "successMetrics": ["string"],',
+    '    "risks": ["string"],',
+    '    "recommendations": ["string"],',
+    '    "items": [{ "label": "string", "bucket": "Frontend|Backend|API|Business|Delivery", "text": "string" }]',
+    "  }",
+    "}",
+    "Requirements: keep it concise but complete, include API/integration needs, delivery milestones, and measurable launch KPIs.",
+    `Lead context: ${JSON.stringify({
+      businessName: toSafeString(intake.businessName, "Client"),
+      industry: toSafeString(intake.industry, ""),
+      contactName: toSafeString(intake.contactName, ""),
+      email: toSafeString(intake.email, ""),
+      phone: toSafeString(intake.phone, ""),
+      projectType: toSafeString(intake.projectType, "digital"),
+      goal: toSafeString(intake.goal, toSafeString(intake.ideaDescription, "business growth")),
+      targetAudience: toSafeString(intake.targetAudience, "end users"),
+      priority: toSafeString(intake.priority, "medium"),
+      selectedPackage: toSafeString(intake.selectedPackage, "growth"),
+      budget: toSafeNumber(intake.budget, toSafeNumber(intake.estimatedPrice)),
+      deadline: toSafeString(intake.deadline, ""),
+      features,
+      userRoles,
+      modules,
+      ideaDescription: toSafeString(intake.ideaDescription, ""),
+      uploadedFiles: uploadedFiles.map((file) => ({ name: file.name, size: file.size, type: file.type, isImage: file.isImage })),
+      meetingSlot: toSafeString(intake.meetingSlot, ""),
+      suggestionNotes: normalizeArray(intake.suggestionNotes, []),
+    })}`,
+  ].join("\n");
+
+  try {
+    const provider = getAIProvider();
+    const result = await provider.execute(prompt);
+    if (result.provider !== "ollama") {
+      return fallback;
+    }
+
+    const parsed = safeJsonParse<{
+      summary?: string;
+      features?: string[];
+      modules?: string[];
+      analysis?: {
+        businessType?: string;
+        goal?: string;
+        targetAudience?: string;
+        priority?: string;
+        package?: string;
+        budget?: number;
+        timeline?: string;
+        confidence?: number;
+        successMetrics?: string[];
+        risks?: string[];
+        recommendations?: string[];
+        items?: Array<{ label?: string; bucket?: string; text?: string }>;
+      };
+    }>(result.text, {});
+
+    const aiFeatures = normalizeRequirementFeatureList(parsed.features, features);
+    const aiModules = normalizeRequirementFeatureList(parsed.modules, modules);
+    const aiItems = normalizeArray(parsed.analysis?.items, [])
+      .map((item) => ({
+        label: String(item?.label || "").trim(),
+        bucket: String(item?.bucket || "Business").trim(),
+        text: String(item?.text || "").trim(),
+      }))
+      .filter((item) => item.label.length > 0 || item.text.length > 0)
+      .slice(0, 24);
+
+    const analysis = {
+      ...fallback.analysis,
+      businessType: toSafeString(parsed.analysis?.businessType, fallback.analysis.businessType),
+      goal: toSafeString(parsed.analysis?.goal, fallback.analysis.goal),
+      targetAudience: toSafeString(parsed.analysis?.targetAudience, fallback.analysis.targetAudience),
+      priority: toSafeString(parsed.analysis?.priority, fallback.analysis.priority),
+      package: toSafeString(parsed.analysis?.package, fallback.analysis.package),
+      budget: toSafeNumber(parsed.analysis?.budget, fallback.analysis.budget),
+      timeline: toSafeString(parsed.analysis?.timeline, fallback.analysis.timeline),
+      confidence: Math.max(0, Math.min(1, Number(parsed.analysis?.confidence ?? 0.82))),
+      successMetrics: normalizeRequirementFeatureList(parsed.analysis?.successMetrics, fallback.analysis.successMetrics),
+      risks: normalizeRequirementFeatureList(parsed.analysis?.risks, fallback.analysis.risks),
+      recommendations: normalizeRequirementFeatureList(parsed.analysis?.recommendations, fallback.analysis.recommendations),
+      items: aiItems.length ? aiItems : fallback.analysis.items,
+    };
+
+    return {
+      summary: toSafeString(parsed.summary, fallback.summary),
+      features: aiFeatures,
+      modules: aiModules,
+      analysis,
+      items: aiItems.length ? aiItems : fallback.items,
+    };
+  } catch {
+    return fallback;
+  }
 }
 
 function isAdminRole(role: unknown) {
@@ -283,18 +429,31 @@ async function ensureTables() {
       email TEXT,
       phone TEXT,
       project_type TEXT,
+      goal TEXT,
       features JSONB NOT NULL DEFAULT '[]'::jsonb,
+      user_roles JSONB NOT NULL DEFAULT '[]'::jsonb,
+      modules JSONB NOT NULL DEFAULT '[]'::jsonb,
       description TEXT,
+      target_audience TEXT,
       budget DOUBLE PRECISION,
       timeline TEXT,
       package TEXT,
       files JSONB NOT NULL DEFAULT '[]'::jsonb,
       meeting_slot TEXT,
+      priority TEXT,
+      suggestion_notes JSONB NOT NULL DEFAULT '[]'::jsonb,
       source TEXT NOT NULL DEFAULT 'client_link_form',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+  await db.$executeRawUnsafe(`ALTER TABLE intake_submissions ADD COLUMN IF NOT EXISTS goal TEXT`);
+  await db.$executeRawUnsafe(`ALTER TABLE intake_submissions ADD COLUMN IF NOT EXISTS user_roles JSONB NOT NULL DEFAULT '[]'::jsonb`);
+  await db.$executeRawUnsafe(`ALTER TABLE intake_submissions ADD COLUMN IF NOT EXISTS modules JSONB NOT NULL DEFAULT '[]'::jsonb`);
+  await db.$executeRawUnsafe(`ALTER TABLE intake_submissions ADD COLUMN IF NOT EXISTS target_audience TEXT`);
+  await db.$executeRawUnsafe(`ALTER TABLE intake_submissions ADD COLUMN IF NOT EXISTS priority TEXT`);
+  await db.$executeRawUnsafe(`ALTER TABLE intake_submissions ADD COLUMN IF NOT EXISTS suggestion_notes JSONB NOT NULL DEFAULT '[]'::jsonb`);
 
   await db.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS requirements (
@@ -475,12 +634,19 @@ router.post("/intake/ai/summary", async (req: Request, res: Response) => {
 
 router.post("/intake/ai/refine-description", async (req: Request, res: Response) => {
   const businessName = toSafeString(req.body?.businessName, "the client");
+  const industry = toSafeString(req.body?.industry, "their industry");
+  const contactName = toSafeString(req.body?.contactName, "the key contact");
   const projectType = toSafeString(req.body?.projectType, "digital");
   const goal = toSafeString(req.body?.goal, "business growth");
   const description = toSafeString(req.body?.description);
+  const targetAudience = toSafeString(req.body?.targetAudience, "end users");
   const userRoles = normalizeArray<string>(req.body?.userRoles, []).slice(0, 8);
   const modules = normalizeArray<string>(req.body?.modules, []).slice(0, 12);
   const features = normalizeArray<string>(req.body?.features, []).slice(0, 16);
+  const budget = typeof req.body?.budget === "number" ? req.body.budget : undefined;
+  const deadline = toSafeString(req.body?.deadline, "the agreed launch window");
+  const priority = toSafeString(req.body?.priority, "medium");
+  const selectedPackage = toSafeString(req.body?.selectedPackage, "growth");
 
   if (!description) {
     return res.status(400).json({ success: false, error: "description is required" });
@@ -495,8 +661,15 @@ router.post("/intake/ai/refine-description", async (req: Request, res: Response)
       "Return plain text only.",
       "",
       `Business: ${businessName}`,
+      `Industry: ${industry}`,
+      `Contact: ${contactName}`,
       `Project type: ${projectType}`,
       `Goal: ${goal}`,
+      `Target audience: ${targetAudience}`,
+      `Budget: ${budget ? budget.toLocaleString("en-IN") : "Not specified"}`,
+      `Deadline: ${deadline}`,
+      `Priority: ${priority}`,
+      `Package: ${selectedPackage}`,
       `User roles: ${userRoles.join(", ") || "Not specified"}`,
       `Modules/pages: ${modules.join(", ") || "Not specified"}`,
       `Core capabilities: ${features.join(", ") || "Not specified"}`,
@@ -726,14 +899,20 @@ router.post("/intake/submit", async (req: Request, res: Response) => {
       email: req.body?.email,
       phone: req.body?.phone,
       projectType: req.body?.projectType,
+      goal: req.body?.goal,
       features: normalizeArray(req.body?.features, []),
+      userRoles: normalizeArray(req.body?.userRoles, []),
+      modules: normalizeArray(req.body?.modules, []),
       ideaDescription: req.body?.ideaDescription,
+      targetAudience: req.body?.targetAudience,
       budget: toSafeNumber(req.body?.budget),
       deadline: req.body?.deadline,
+      priority: req.body?.priority,
       selectedPackage: req.body?.selectedPackage,
       uploadedFiles: normalizeArray(req.body?.uploadedFiles, []),
       meetingSlot: req.body?.meetingSlot,
       estimatedPrice: toSafeNumber(req.body?.estimatedPrice),
+      suggestionNotes: normalizeArray(req.body?.suggestionNotes, []),
     };
 
     const now = new Date();
@@ -742,12 +921,12 @@ router.post("/intake/submit", async (req: Request, res: Response) => {
     await db.$executeRawUnsafe(
       `
       INSERT INTO intake_submissions (
-        id, lead_id, business_name, industry, contact_name, email, phone, project_type, features,
-        description, budget, timeline, package, files, meeting_slot, updated_at
+        id, lead_id, business_name, industry, contact_name, email, phone, project_type, goal, features,
+        user_roles, modules, description, target_audience, budget, timeline, package, files, meeting_slot, priority, suggestion_notes, updated_at
       )
       VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb,
-        $10, $11, $12, $13, $14::jsonb, $15, $16
+        $1, $2, $3, $4, $5, $6, $7, $8, $9,
+        $10::jsonb, $11::jsonb, $12::jsonb, $13, $14, $15, $16, $17, $18::jsonb, $19, $20, $21::jsonb, $22
       )
       ON CONFLICT (lead_id)
       DO UPDATE SET
@@ -757,13 +936,19 @@ router.post("/intake/submit", async (req: Request, res: Response) => {
         email = EXCLUDED.email,
         phone = EXCLUDED.phone,
         project_type = EXCLUDED.project_type,
+        goal = EXCLUDED.goal,
         features = EXCLUDED.features,
+        user_roles = EXCLUDED.user_roles,
+        modules = EXCLUDED.modules,
         description = EXCLUDED.description,
+        target_audience = EXCLUDED.target_audience,
         budget = EXCLUDED.budget,
         timeline = EXCLUDED.timeline,
         package = EXCLUDED.package,
         files = EXCLUDED.files,
         meeting_slot = EXCLUDED.meeting_slot,
+        priority = EXCLUDED.priority,
+        suggestion_notes = EXCLUDED.suggestion_notes,
         updated_at = EXCLUDED.updated_at
       `,
       intakeId,
@@ -774,13 +959,19 @@ router.post("/intake/submit", async (req: Request, res: Response) => {
       toSafeString(intake.email),
       toSafeString(intake.phone),
       toSafeString(intake.projectType),
+      toSafeString(intake.goal),
       JSON.stringify(normalizeArray(intake.features, [])),
+      JSON.stringify(normalizeArray(intake.userRoles, [])),
+      JSON.stringify(normalizeArray(intake.modules, [])),
       toSafeString(intake.ideaDescription),
+      toSafeString(intake.targetAudience),
       toSafeNumber(intake.budget, toSafeNumber(intake.estimatedPrice)),
       toSafeString(intake.deadline),
       toSafeString(intake.selectedPackage),
       JSON.stringify(normalizeArray(intake.uploadedFiles, [])),
       toSafeString(intake.meetingSlot),
+      toSafeString(intake.priority),
+      JSON.stringify(normalizeArray(intake.suggestionNotes, [])),
       now,
     );
 
@@ -792,7 +983,7 @@ router.post("/intake/submit", async (req: Request, res: Response) => {
       );
     }
 
-    const ai = buildRequirementAnalysis(intake);
+    const ai = await buildRequirementAnalysis(intake);
     const requirementId = `req-${leadId}`;
 
     await db.$executeRawUnsafe(
@@ -900,13 +1091,19 @@ router.get("/requirements/:leadId", authMiddleware, async (req: Request, res: Re
           email: intakeRows[0].email,
           phone: intakeRows[0].phone,
           projectType: intakeRows[0].project_type,
+          goal: intakeRows[0].goal,
           features: normalizeArray(intakeRows[0].features, []),
+          userRoles: normalizeArray(intakeRows[0].user_roles, []),
+          modules: normalizeArray(intakeRows[0].modules, []),
           description: intakeRows[0].description,
+          targetAudience: intakeRows[0].target_audience,
           budget: intakeRows[0].budget,
           timeline: intakeRows[0].timeline,
           package: intakeRows[0].package,
           files: normalizeArray(intakeRows[0].files, []),
           meetingSlot: intakeRows[0].meeting_slot,
+          priority: intakeRows[0].priority,
+          suggestionNotes: normalizeArray(intakeRows[0].suggestion_notes, []),
           createdAt: intakeRows[0].created_at,
           updatedAt: intakeRows[0].updated_at,
         }
@@ -999,14 +1196,27 @@ router.post("/requirements/:leadId/regenerate", authMiddleware, async (req: Requ
       return res.status(404).json({ success: false, error: "No intake submission found for this lead" });
     }
 
-    const ai = buildRequirementAnalysis({
+    const ai = await buildRequirementAnalysis({
       leadId,
       businessName: intake.business_name,
+      industry: intake.industry,
+      contactName: intake.contact_name,
+      email: intake.email,
+      phone: intake.phone,
       projectType: intake.project_type,
+      goal: intake.goal,
       features: normalizeArray(intake.features, []),
+      userRoles: normalizeArray(intake.user_roles, []),
+      modules: normalizeArray(intake.modules, []),
+      targetAudience: intake.target_audience,
       budget: toSafeNumber(intake.budget),
       deadline: intake.timeline,
+      priority: intake.priority,
       selectedPackage: intake.package,
+      ideaDescription: intake.description,
+      uploadedFiles: normalizeArray(intake.files, []),
+      meetingSlot: intake.meeting_slot,
+      estimatedPrice: intake.estimated_price ?? intake.estimatedPrice,
     });
 
     await db.$executeRawUnsafe(
@@ -1056,14 +1266,23 @@ router.post("/requirements/:leadId/lock", authMiddleware, async (req: Request, r
       const intakeForCreate = intake || intakePayload;
 
       if (intakeForCreate) {
-        const ai = buildRequirementAnalysis({
+        const ai = await buildRequirementAnalysis({
           leadId,
           businessName: intakeForCreate.business_name ?? intakeForCreate.businessName,
+          industry: intakeForCreate.industry,
+          contactName: intakeForCreate.contact_name ?? intakeForCreate.contactName,
+          email: intakeForCreate.email,
+          phone: intakeForCreate.phone,
           projectType: intakeForCreate.project_type ?? intakeForCreate.projectType,
+          goal: intakeForCreate.goal,
           features: normalizeArray(intakeForCreate.features, []),
+          userRoles: normalizeArray(intakeForCreate.user_roles ?? intakeForCreate.userRoles, []),
+          modules: normalizeArray(intakeForCreate.modules, []),
+          targetAudience: intakeForCreate.target_audience ?? intakeForCreate.targetAudience,
           ideaDescription: intakeForCreate.description ?? intakeForCreate.ideaDescription,
           budget: intakeForCreate.budget ?? intakeForCreate.estimatedPrice,
           deadline: intakeForCreate.timeline ?? intakeForCreate.deadline,
+          priority: intakeForCreate.priority,
           selectedPackage: intakeForCreate.package ?? intakeForCreate.selectedPackage,
           uploadedFiles: normalizeArray(intakeForCreate.files ?? intakeForCreate.uploadedFiles, []),
           meetingSlot: intakeForCreate.meeting_slot ?? intakeForCreate.meetingSlot,

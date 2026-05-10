@@ -24,6 +24,13 @@ type BackendIntakeSubmission = {
     businessName?: string;
     contactName?: string;
     email?: string;
+    goal?: string;
+    userRoles?: string[];
+    modules?: string[];
+    targetAudience?: string;
+    priority?: ClientIntakeForm["priority"];
+    selectedPackage?: ClientIntakeForm["selectedPackage"];
+    suggestionNotes?: string[];
   };
   lead?: {
     id?: string | number;
@@ -190,7 +197,10 @@ const toSubmission = (item: BackendIntakeSubmission): ClientIntakeSubmission => 
       phone: formData.phone ?? "",
       companySize: formData.companySize ?? "",
       projectType: (formData.projectType as ClientIntakeForm["projectType"]) ?? "Website",
+      goal: formData.goal ?? "",
       features: formData.features ?? [],
+      userRoles: formData.userRoles ?? [],
+      modules: formData.modules ?? [],
       ideaDescription: formData.ideaDescription ?? "",
       targetAudience: formData.targetAudience ?? "",
       budget: formData.budget ?? 0,
@@ -237,12 +247,19 @@ export const submitIntakeToBackend = async (payload: ClientIntakeForm & { token?
 
 export const refineIntakeDescriptionWithAI = async (payload: {
   businessName?: string;
+  industry?: string;
+  contactName?: string;
   projectType?: string;
   goal?: string;
   description: string;
+  targetAudience?: string;
   userRoles?: string[];
   modules?: string[];
   features?: string[];
+  budget?: number;
+  deadline?: string;
+  priority?: string;
+  selectedPackage?: string;
 }) => {
   return request<{ description: string; provider?: string; model?: string }>(
     "/intake/ai/refine-description",
