@@ -92,7 +92,20 @@ const packageMatrix: Record<IntakePackage, { price: number; title: string; subti
 
 const meetingSlots = [
   "Mon 10:00 AM",
-  "Mon 03:=
+  "Mon 03:30 PM",
+  "Tue 11:30 AM",
+  "Wed 05:00 PM",
+  "Thu 01:00 PM",
+  "Fri 06:00 PM",
+];
+
+const defaultForm: ClientIntakeForm = {
+  businessName: "",
+  industry: "",
+  businessWebsite: "",
+  country: "India",
+  timezone: "Asia/Kolkata",
+  contactName: "",
   contactRole: "",
   email: "",
   phone: "",
