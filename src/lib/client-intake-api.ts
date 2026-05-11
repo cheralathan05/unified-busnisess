@@ -23,11 +23,15 @@ type BackendIntakeSubmission = {
   formData?: Partial<ClientIntakeForm> & {
     businessName?: string;
     contactName?: string;
+    contactRole?: string;
     email?: string;
     goal?: string;
     userRoles?: string[];
     modules?: string[];
     targetAudience?: string;
+    preferredContactMethod?: ClientIntakeForm["preferredContactMethod"];
+    businessStage?: ClientIntakeForm["businessStage"];
+    launchUrgency?: ClientIntakeForm["launchUrgency"];
     priority?: ClientIntakeForm["priority"];
     selectedPackage?: ClientIntakeForm["selectedPackage"];
     suggestionNotes?: string[];
@@ -161,23 +165,37 @@ const unwrapResponse = <T>(payload: unknown): T => {
 };
 
 async function request<T>(path: string, init: RequestInit = {}, authenticated = false): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      ...(init.headers ?? {}),
-      ...(authenticated ? getAuthorizationHeader() : {}),
-      "Content-Type": "application/json",
-    },
-  });
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 60000);
 
-  const text = await response.text();
-  const payload = text ? JSON.parse(text) : {};
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      headers: {
+        ...(init.headers ?? {}),
+        ...(authenticated ? getAuthorizationHeader() : {}),
+        "Content-Type": "application/json",
+      },
+      signal: controller.signal,
+    });
 
-  if (!response.ok) {
-    throw new ClientIntakeApiError(payload?.error ?? payload?.message ?? "Request failed.", response.status, payload?.data ?? payload);
+    const text = await response.text();
+    const payload = text ? JSON.parse(text) : {};
+
+    if (!response.ok) {
+      throw new ClientIntakeApiError(payload?.error ?? payload?.message ?? "Request failed.", response.status, payload?.data ?? payload);
+    }
+
+    return unwrapResponse<T>(payload);
+  } catch (error) {
+    if ((error as Error).name === "AbortError") {
+      throw new ClientIntakeApiError("Request timed out. Please try again.", 408);
+    }
+
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
   }
-
-  return unwrapResponse<T>(payload);
 }
 
 const toSubmission = (item: BackendIntakeSubmission): ClientIntakeSubmission => {
@@ -192,10 +210,17 @@ const toSubmission = (item: BackendIntakeSubmission): ClientIntakeSubmission => 
     form: {
       businessName: formData.businessName ?? item.lead?.company ?? "",
       industry: formData.industry ?? "",
+      businessWebsite: formData.businessWebsite ?? "",
+      country: formData.country ?? "India",
+      timezone: formData.timezone ?? "Asia/Kolkata",
       contactName: formData.contactName ?? item.lead?.name ?? "",
+      contactRole: formData.contactRole ?? "",
       email: formData.email ?? "",
       phone: formData.phone ?? "",
+      preferredContactMethod: (formData.preferredContactMethod as ClientIntakeForm["preferredContactMethod"]) ?? "Email",
       companySize: formData.companySize ?? "",
+      businessStage: (formData.businessStage as ClientIntakeForm["businessStage"]) ?? "Startup",
+      launchUrgency: (formData.launchUrgency as ClientIntakeForm["launchUrgency"]) ?? "Flexible",
       projectType: (formData.projectType as ClientIntakeForm["projectType"]) ?? "Website",
       goal: formData.goal ?? "",
       features: formData.features ?? [],

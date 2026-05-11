@@ -49,9 +49,9 @@ export const env = {
   OLLAMA_URL: process.env.OLLAMA_URL || "http://localhost:11434/api/generate",
   OLLAMA_MODEL: process.env.OLLAMA_MODEL || "llama3",
   OLLAMA_MODEL_TEXT: process.env.OLLAMA_MODEL_TEXT || "llama3",
-  OLLAMA_MODEL_CLASSIFIER: process.env.OLLAMA_MODEL_CLASSIFIER || "phi3",
-  OLLAMA_MODEL_REASONING: process.env.OLLAMA_MODEL_REASONING || "mistral",
-  OLLAMA_TIMEOUT_MS: Number(process.env.OLLAMA_TIMEOUT_MS) || 4500,
+  OLLAMA_MODEL_CLASSIFIER: process.env.OLLAMA_MODEL_CLASSIFIER || "llama3",
+  OLLAMA_MODEL_REASONING: process.env.OLLAMA_MODEL_REASONING || "llama3",
+  OLLAMA_TIMEOUT_MS: Number(process.env.OLLAMA_TIMEOUT_MS) || 30000,
 
   WEBAUTHN_RP_NAME: process.env.WEBAUTHN_RP_NAME || "Digital Brain",
   WEBAUTHN_RP_ID: process.env.WEBAUTHN_RP_ID || "localhost",

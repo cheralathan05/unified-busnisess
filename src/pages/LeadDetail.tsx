@@ -1,5 +1,4 @@
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { useState } from "react";
 import {
   ArrowLeft,
   Brain,
@@ -24,7 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { createProjectFromLead, type LeadLike } from "@/lib/project-store";
 import { getClientIntakeLinkForLead, getProposalLinkForLeadId } from "@/lib/collaboration-store";
-import { getLeadById, updateLead, type LeadRequirements } from "@/lib/lead-store";
+import { getLeadById, updateLead } from "@/lib/lead-store";
 
 type Lead = LeadLike & {
   projectDescription?: string;
@@ -58,61 +57,6 @@ export default function LeadDetail() {
   const location = useLocation();
   const leadFromState = location.state && typeof location.state === "object" ? (location.state as { lead?: Lead }).lead : undefined;
   const lead = leadFromState ?? getLeadById(id) ?? fallbackLead;
-  const [meetingNotes, setMeetingNotes] = useState(lead.meetingNotes ?? "");
-  const [requirements, setRequirements] = useState<LeadRequirements>(
-    lead.requirements ?? {
-      features: [],
-      budgetSummary: lead.budgetLabel,
-      timelineSummary: "15 days",
-      prioritySummary: lead.status === "hot" ? "High" : lead.status === "warm" ? "Medium" : "Low",
-      frontend: [],
-      backend: [],
-      integrations: [],
-    },
-  );
-
-  const parseMeetingNotes = (notes: string): LeadRequirements => {
-    const lines = notes
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
-
-    const contains = (line: string, tokens: string[]) => tokens.some((token) => line.toLowerCase().includes(token));
-
-    const features = lines.filter((line) => contains(line, ["feature", "need", "want", "must"]));
-    const frontend = lines.filter((line) => contains(line, ["ui", "frontend", "page", "responsive"]));
-    const backend = lines.filter((line) => contains(line, ["api", "backend", "admin", "database", "auth"]));
-    const integrations = lines.filter((line) => contains(line, ["payment", "integration", "gateway", "webhook"]));
-    const budgetLine = lines.find((line) => contains(line, ["budget", "rs", "₹"])) ?? lead.budgetLabel;
-    const timelineLine = lines.find((line) => contains(line, ["timeline", "day", "week", "deadline"])) ?? "15 days";
-    const priorityLine = lines.find((line) => contains(line, ["urgent", "priority", "critical"])) ?? (lead.status === "hot" ? "High priority" : "Medium priority");
-
-    return {
-      features: features.length ? features : ["Project requirements captured from AI meeting summary"],
-      budgetSummary: budgetLine,
-      timelineSummary: timelineLine,
-      prioritySummary: priorityLine,
-      frontend,
-      backend,
-      integrations,
-    };
-  };
-
-  const saveMeetingData = (nextRequirements: LeadRequirements, notes: string) => {
-    const updated = {
-      ...lead,
-      meetingNotes: notes,
-      requirements: nextRequirements,
-    };
-    updateLead(updated);
-  };
-
-  const runAiMeetingCapture = () => {
-    const extracted = parseMeetingNotes(meetingNotes);
-    setRequirements(extracted);
-    saveMeetingData(extracted, meetingNotes);
-    toast.success("AI meeting notes processed into structured requirements");
-  };
 
   const moveToProject = () => {
     const project = createProjectFromLead(lead);
@@ -310,57 +254,6 @@ export default function LeadDetail() {
               </div>
             </GlassCard>
 
-            <GlassCard className="space-y-4">
-              <h3 className="text-lg font-semibold text-foreground">Quick Actions</h3>
-              <div className="grid gap-2">
-                <Button className="justify-start gradient-primary text-primary-foreground glow-primary hover:opacity-90" onClick={moveToProject}>
-                  <FolderKanban className="w-4 h-4 mr-2" /> Move to Project
-                </Button>
-                <Button variant="outline" className="justify-start border-border/50 text-muted-foreground hover:text-foreground" onClick={() => toast.success("WhatsApp message ready") }>
-                  <MessageCircle className="w-4 h-4 mr-2" /> Open WhatsApp
-                </Button>
-                <Button variant="outline" className="justify-start border-border/50 text-muted-foreground hover:text-foreground" onClick={sendProposal}>
-                  <Sparkles className="w-4 h-4 mr-2" /> Send Proposal
-                </Button>
-                <div className="grid grid-cols-3 gap-2">
-                  <Button size="sm" variant="outline" className="text-xs" onClick={() => sendClientLink("copy")}>Copy Link</Button>
-                  <Button size="sm" variant="outline" className="text-xs" onClick={() => sendClientLink("email")}>Send Email</Button>
-                  <Button size="sm" variant="outline" className="text-xs" onClick={() => sendClientLink("whatsapp")}>WhatsApp</Button>
-                </div>
-                <Button variant="outline" className="justify-start border-border/50 text-muted-foreground hover:text-foreground" onClick={() => toast.success("Task added") }>
-                  <CheckCircle className="w-4 h-4 mr-2" /> Add Task
-                </Button>
-              </div>
-            </GlassCard>
-
-            <GlassCard className="space-y-3">
-              <h3 className="text-lg font-semibold text-foreground">Timeline</h3>
-              <div className="space-y-3">
-                {[
-                  "Lead captured",
-                  "Initial qualification",
-                  "Proposal / discovery call",
-                  "Closing and handoff",
-                ].map((item, index) => (
-                  <div key={item} className="flex items-center gap-3 text-sm">
-                    <div className="h-2.5 w-2.5 rounded-full bg-primary" />
-                    <span className="text-muted-foreground">Step {index + 1}:</span>
-                    <span className="text-foreground">{item}</span>
-                  </div>
-                ))}
-              </div>
-            </GlassCard>
-
-            <GlassCard className="space-y-4">
-              <h3 className="text-lg font-semibold text-foreground">AI Meeting Capture</h3>
-              <Textarea
-                value={meetingNotes}
-                onChange={(event) => setMeetingNotes(event.target.value)}
-                placeholder="Paste meeting transcript: features, budget, timeline, priority..."
-                className="min-h-[120px] bg-secondary/30 border-border/50"
-              />
-              <Button onClick={runAiMeetingCapture} className="w-full">Capture Meeting Data</Button>
-            </GlassCard>
           </div>
         </div>
 

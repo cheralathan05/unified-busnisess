@@ -5,7 +5,6 @@ import {
   Bot,
   Check,
   CheckCircle2,
-  Clock3,
   FileText,
   GitBranch,
   Image as ImageIcon,
@@ -112,10 +111,17 @@ const COMPANY_SIZE_OPTIONS = ["1-5", "6-20", "21-50", "51-200", "200+"];
 const DEFAULT_INTAKE_FORM: ClientIntakeForm = {
   businessName: "",
   industry: "",
+  businessWebsite: "",
+  country: "India",
+  timezone: "Asia/Kolkata",
   contactName: "",
+  contactRole: "",
   email: "",
   phone: "",
+  preferredContactMethod: "Email",
   companySize: "",
+  businessStage: "Startup",
+  launchUrgency: "Flexible",
   projectType: "Website",
   goal: "",
   features: [],
@@ -615,6 +621,7 @@ export function RequirementsPage() {
   const [isRefining, setIsRefining] = useState(false);
   const [refinementForm, setRefinementForm] = useState<ClientIntakeForm>(cloneForm(null));
   const [refinementVersions, setRefinementVersions] = useState<RefinementVersionStore>(getVersionStore());
+  const [isRefiningAi, setIsRefiningAi] = useState(false);
   const [isLocking, setIsLocking] = useState(false);
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [password, setPassword] = useState("");
@@ -743,11 +750,10 @@ export function RequirementsPage() {
 
     const missing: string[] = [];
     if (completeness.percent < 80) missing.push("Low completeness score");
-    if (aiConfidence < 75) missing.push("Low AI confidence");
     if (!hasLinkedLead) missing.push("Not linked to a lead");
     if (!requirementBundle?.requirements?.items?.length) missing.push("No requirement items");
 
-    const score = Math.max(0, 100 - missing.length * 25 - (100 - completeness.percent) / 2 - (100 - aiConfidence) / 4);
+    const score = Math.max(0, 100 - missing.length * 25 - (100 - completeness.percent) / 2);
 
     return {
       lockScore: Math.round(score),
@@ -857,8 +863,18 @@ export function RequirementsPage() {
   };
 
   const handleLock = async () => {
-    if (!selectedLead || !readyToLock) return;
+    if (!selectedLead) {
+      toast.error("Select a lead first", { description: "Choose a submitted client record before locking." });
+      return;
+    }
+
     setIsLocking(true);
+
+    if (!readyToLock) {
+      toast.info("Review first", {
+        description: lockMissing.length ? lockMissing[0] : "Add more requirements before locking.",
+      });
+    }
   };
 
   const handleConfirmLock = async () => {
@@ -929,8 +945,12 @@ export function RequirementsPage() {
   };
 
   const handleRefineWithAI = async () => {
+    if (isRefiningAi) return;
+
     const originalDescription = refinementForm.ideaDescription;
     const draft = improveDescriptionDraft(refinementForm);
+    setIsRefiningAi(true);
+    toast.info("Refining with AI...", { description: "This may take a moment." });
 
     try {
       const refined = await refineIntakeDescriptionWithAI({
@@ -951,9 +971,13 @@ export function RequirementsPage() {
       });
       setRefinementForm((prev) => ({ ...prev, ideaDescription: String((refined as any).description ?? refined).trim() }));
       toast.success("AI refinement complete");
-    } catch {
+    } catch (error) {
       setRefinementForm((prev) => ({ ...prev, ideaDescription: originalDescription }));
-      toast.error("AI refinement failed");
+      toast.error("AI refinement failed", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setIsRefiningAi(false);
     }
   };
 
@@ -1386,38 +1410,54 @@ export function RequirementsPage() {
                           <div className="mt-3 overflow-hidden rounded-lg border border-white/10">
                             <img src={file.previewUrl} alt={file.name} className="h-32 w-full object-cover" />
                           </div>
-                        ) : null}
+                          ) : null}
+                          {/* PDF preview + controls */}
+                          {file.type === "application/pdf" && file.previewUrl ? (
+                            <div className="mt-3 rounded-lg border border-white/10">
+                              <object data={file.previewUrl} type="application/pdf" className="h-48 w-full">
+                                <p className="p-3 text-sm text-white/70">PDF preview not available in this browser.</p>
+                              </object>
+                            </div>
+                          ) : null}
+
+                          <div className="mt-3 flex items-center justify-between gap-2">
+                            <div className="flex gap-2">
+                              {file.previewUrl ? (
+                                <a
+                                  href={file.previewUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="rounded-md border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/80 hover:bg-white/10"
+                                >
+                                  Preview
+                                </a>
+                              ) : null}
+
+                              {file.previewUrl ? (
+                                <a
+                                  href={file.previewUrl}
+                                  download={file.name}
+                                  className="rounded-md border border-white/10 bg-cyan-300/10 px-3 py-1 text-xs text-cyan-200 hover:bg-cyan-300/20"
+                                >
+                                  Download
+                                </a>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled
+                                  className="rounded-md border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/40"
+                                >
+                                  Download
+                                </button>
+                              )}
+                            </div>
+                            <div />
+                          </div>
                       </div>
                     ))
                   ) : (
                     <p className="text-sm text-white/70">No assets uploaded.</p>
                   )}
-                </div>
-              </section>
-
-              <section className="rounded-2xl border border-white/10 bg-[#0a1224] p-7">
-                <h2 className="text-xl font-semibold text-white">Meeting + AI Insights</h2>
-                <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                    <p className="text-sm font-semibold text-blue-200">AI Summary</p>
-                    <p className="mt-2 text-sm text-white/85">{aiSummary}</p>
-                    <p className="mt-4 flex items-center gap-2 text-xs text-white/65"><Clock3 className="h-3.5 w-3.5" /> Meeting: {selectedSubmission.form.meetingSlot || formatDateTime(requirementBundle?.meeting?.dateTime)}</p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                    <p className="text-sm font-semibold text-blue-200">Missing + Suggestion</p>
-                    <div className="mt-2 space-y-1 text-sm text-white/85">
-                      {completeness.missing.length ? (
-                        completeness.missing.slice(0, 4).map((item) => <p key={item}>- {item}</p>)
-                      ) : (
-                        <p>- No major missing items detected.</p>
-                      )}
-                    </div>
-                    <p className="mt-4 text-sm text-white/80">
-                      Suggestion: {completeness.missing.some((item) => /api/i.test(item))
-                        ? "Start with frontend + mock API, then finalize backend contract."
-                        : "Generate tasks and start frontend implementation immediately."}
-                    </p>
-                  </div>
                 </div>
               </section>
 
@@ -1617,9 +1657,18 @@ export function RequirementsPage() {
                 </div>
                 <div className="relative mt-3">
                   <Textarea value={refinementForm.ideaDescription} onChange={(e) => setRefinementForm({ ...refinementForm, ideaDescription: e.target.value })} placeholder="Detailed project description" className="h-44 bg-white/5" disabled={studioLocked} />
+                  {isRefiningAi ? (
+                    <div className="absolute inset-0 rounded-md border border-cyan-300/20 bg-[#0a1224]/85 backdrop-blur-sm flex flex-col items-center justify-center gap-3 text-center">
+                      <div className="h-10 w-10 animate-spin rounded-full border-2 border-cyan-300/30 border-t-cyan-200" />
+                      <div>
+                        <p className="text-sm font-semibold text-cyan-100">Analyzing lead requirements</p>
+                        <p className="text-xs text-white/60">Waiting for the AI response before updating the draft.</p>
+                      </div>
+                    </div>
+                  ) : null}
                   {!studioLocked ? (
-                    <Button size="sm" variant="outline" className="absolute bottom-2 right-2 border-blue-300/30 bg-blue-500/10 text-blue-100 hover:bg-blue-500/20" onClick={handleRefineWithAI}>
-                      <Sparkles className="mr-2 h-3.5 w-3.5" /> Refine with AI
+                    <Button size="sm" variant="outline" className="absolute bottom-2 right-2 border-blue-300/30 bg-blue-500/10 text-blue-100 hover:bg-blue-500/20" onClick={handleRefineWithAI} disabled={isRefiningAi}>
+                      <Sparkles className={`mr-2 h-3.5 w-3.5 ${isRefiningAi ? "animate-pulse" : ""}`} /> {isRefiningAi ? "Refining..." : "Refine with AI"}
                     </Button>
                   ) : null}
                 </div>
@@ -1737,6 +1786,17 @@ export function RequirementsPage() {
 
               <section className="rounded-2xl border border-white/10 bg-black/20 p-4">
                 <h3 className="mb-3 font-semibold text-blue-200">AI Coverage Preview</h3>
+                {isRefiningAi ? (
+                  <div className="space-y-3 text-sm text-white/75">
+                    <div className="rounded-xl border border-cyan-300/20 bg-cyan-500/10 p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-300/30 border-t-cyan-200" />
+                        <p className="font-medium text-cyan-100">Generating lead requirement analysis</p>
+                      </div>
+                      <p className="mt-2 text-xs text-white/60">The current draft stays in place until the AI response is ready.</p>
+                    </div>
+                  </div>
+                ) : (
                 <div className="space-y-3 text-sm text-white/75">
                   <p>{aiSummary}</p>
                   <div className="rounded-xl border border-white/10 bg-white/5 p-3">
@@ -1758,6 +1818,7 @@ export function RequirementsPage() {
                     </ul>
                   </div>
                 </div>
+                )}
               </section>
             </div>
           </div>
@@ -1776,6 +1837,17 @@ export function RequirementsPage() {
               Enter a password to lock this requirement. This action is reversible only by an admin.
             </DialogDescription>
           </DialogHeader>
+          <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white/80">
+            <p className="font-medium text-white">Lock readiness: {readyToLock ? "Ready" : "Needs review"}</p>
+            <p className="mt-1 text-xs text-white/60">Score {lockScore}% · Completeness {completeness.percent}%</p>
+            {!readyToLock ? (
+              <ul className="mt-2 space-y-1 text-xs text-amber-100/90">
+                {lockMissing.slice(0, 4).map((item) => (
+                  <li key={item}>• {item}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
           <div className="space-y-2">
             <Input
               type="password"
@@ -1788,7 +1860,9 @@ export function RequirementsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsLocking(false)}>Cancel</Button>
-            <Button onClick={handleConfirmLock} className="bg-blue-600 text-white hover:bg-blue-500">Confirm Lock</Button>
+            <Button onClick={handleConfirmLock} className="bg-blue-600 text-white hover:bg-blue-500" disabled={!readyToLock || !password}>
+              Confirm Lock
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

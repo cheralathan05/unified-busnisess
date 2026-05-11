@@ -5,6 +5,9 @@ import { syncClientIntakeSubmissionToBackend } from "@/lib/client-intake-api";
 
 export type IntakePriority = "low" | "medium" | "urgent";
 export type IntakePackage = "basic" | "growth" | "premium";
+export type BudgetChip = "under50k" | "50kto2l" | "2lto5l" | "5lplus";
+export type ProjectUrgency = "flexible" | "normal" | "fast-track" | "emergency";
+export type BudgetFlexibility = "fixed" | "flexible" | "recommendation";
 
 export type ClientIntakeFile = {
   name: string;
@@ -15,29 +18,72 @@ export type ClientIntakeFile = {
   previewUrl?: string;
 };
 
+export type CostBreakdownItem = {
+  category: string;
+  amount: number;
+};
+
+export type TeamMember = {
+  role: string;
+  count: number;
+};
+
+export type PaymentSchedule = {
+  advance: number;
+  midway: number;
+  final: number;
+};
+
+export type AuthType = "Email Login" | "Google Login" | "OTP Login" | "Social Login" | "Multi-role Access";
+export type PaymentGateway = "Razorpay" | "Stripe" | "PayPal" | "Subscription" | "One-time Payment";
+export type PaymentType = "One-time" | "Subscription" | "Marketplace Payments";
+
 export type ClientIntakeForm = {
   businessName: string;
   industry: string;
+  businessWebsite: string;
+  country: string;
+  timezone: string;
   contactName: string;
+  contactRole: string;
   email: string;
   phone: string;
+  preferredContactMethod: "Email" | "WhatsApp" | "Phone" | "Google Meet";
   companySize: string;
-  projectType: "Website" | "App" | "AI" | "CRM" | "Other";
+  businessStage: "Startup" | "Growing Business" | "Enterprise" | "Agency" | "Personal Brand";
+  launchUrgency: "ASAP" | "1 Month" | "3 Months" | "Flexible";
+  projectType: "Website" | "Mobile App" | "Web App" | "SaaS Platform" | "Admin Panel" | "AI" | "Marketplace" | "CRM" | "ERP" | "Other";
   goal: string;
   features: string[];
   userRoles: string[];
   modules: string[];
   ideaDescription: string;
   targetAudience: string;
+  workflow?: string;
   budget: number;
+  budgetChip?: BudgetChip;
+  budgetFlexibility?: BudgetFlexibility;
   deadline: string;
+  projectUrgency?: ProjectUrgency;
   priority: IntakePriority;
   selectedPackage: IntakePackage;
   uploadedFiles: ClientIntakeFile[];
   meetingSlot: string;
   termsAccepted: boolean;
   estimatedPrice: number;
+  estimatedDeliveryWeeks?: number;
+  costBreakdown?: CostBreakdownItem[];
+  recommendedTeam?: TeamMember[];
+  paymentPlan?: PaymentSchedule;
   suggestionNotes: string[];
+  authenticationTypes?: AuthType[];
+  paymentGateway?: PaymentGateway | "";
+  paymentType?: PaymentType | "";
+  adminPermissions?: string[];
+  adminFeatures?: string[];
+  thirdPartyIntegrations?: string[];
+  referenceWebsites?: string[];
+  aiFeaturesNeeded?: string[];
 };
 
 export type ClientIntakeSubmission = {
@@ -151,9 +197,13 @@ const buildLeadRequirements = (form: ClientIntakeForm): LeadRequirements => {
     ...form.userRoles.filter((item) => ["Admin", "Staff", "Vendor"].includes(item)).map((role) => `${role} access control`),
   ];
   const integrations = form.features.filter((item) => ["AI Assistant", "Analytics", "Notifications", "Payment", "API Integration"].includes(item));
+  const workflowLine = form.workflow?.trim() ? [`Workflow: ${form.workflow.trim()}`] : [];
+  const thirdParty = Array.isArray(form.thirdPartyIntegrations) && form.thirdPartyIntegrations.length
+    ? form.thirdPartyIntegrations.map((item) => `Integration: ${item}`)
+    : [];
 
   return {
-    features: [...form.features, ...form.modules, ...form.userRoles],
+    features: [...form.features, ...form.modules, ...form.userRoles, ...workflowLine, ...thirdParty],
     budgetSummary: `${formatInr(form.budget)} to ${formatInr(form.estimatedPrice)}`,
     timelineSummary,
     prioritySummary,
@@ -165,11 +215,19 @@ const buildLeadRequirements = (form: ClientIntakeForm): LeadRequirements => {
 
 const buildMeetingNotes = (form: ClientIntakeForm, aiSummary: string) => {
   return [
+    `Prepared for: ${form.contactName}${form.contactRole ? `, ${form.contactRole}` : ""}`,
     `Business: ${form.businessName}`,
     `Industry: ${form.industry}`,
+    `Website: ${form.businessWebsite || "Not provided"}`,
+    `Country: ${form.country || "Not provided"}`,
+    `Timezone: ${form.timezone || "Not provided"}`,
     `Project Type: ${form.projectType}`,
     `Target Audience: ${form.targetAudience}`,
+    `Workflow: ${form.workflow?.trim() || "Not provided"}`,
     `Priority: ${form.priority}`,
+    `Business Stage: ${form.businessStage || "Not provided"}`,
+    `Launch Urgency: ${form.launchUrgency || "Not provided"}`,
+    `Preferred Contact Method: ${form.preferredContactMethod || "Not provided"}`,
     `Goal: ${form.goal || "Not specified"}`,
     `User Roles: ${form.userRoles.join(", ") || "Not specified"}`,
     `Modules / Pages: ${form.modules.join(", ") || "Not specified"}`,
@@ -181,6 +239,14 @@ const buildMeetingNotes = (form: ClientIntakeForm, aiSummary: string) => {
     `Files: ${summarizeUploadedFiles(form.uploadedFiles)}`,
     `Idea: ${form.ideaDescription}`,
     `Meeting Slot: ${form.meetingSlot || "Not selected"}`,
+    `Authentication: ${Array.isArray(form.authenticationTypes) ? form.authenticationTypes.join(", ") : form.authenticationTypes || "Not provided"}`,
+    `Payment Gateway: ${form.paymentGateway || "Not provided"}`,
+    `Payment Type: ${form.paymentType || "Not provided"}`,
+    `Admin Permissions: ${Array.isArray(form.adminPermissions) ? form.adminPermissions.join(", ") : "None"}`,
+    `Admin Features: ${Array.isArray(form.adminFeatures) ? form.adminFeatures.join(", ") : "None"}`,
+    `Integrations: ${Array.isArray(form.thirdPartyIntegrations) ? form.thirdPartyIntegrations.join(", ") : "None"}`,
+    `References: ${Array.isArray(form.referenceWebsites) ? form.referenceWebsites.join(", ") : "None"}`,
+    `AI Features: ${Array.isArray(form.aiFeaturesNeeded) ? form.aiFeaturesNeeded.join(", ") : "None"}`,
     `AI Summary: ${aiSummary}`,
   ].join("\n");
 };

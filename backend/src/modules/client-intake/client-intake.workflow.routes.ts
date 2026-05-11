@@ -680,11 +680,11 @@ router.post("/intake/ai/refine-description", async (req: Request, res: Response)
     ].join("\n");
 
     const result = await provider.execute(prompt);
+    const refined = String(result.text || "").trim();
     if (result.provider !== "ollama") {
-      return res.status(503).json({ success: false, error: "Real AI is unavailable. Start Ollama and try again." });
+      return res.status(503).json({ success: false, error: "AI is unavailable. Start Ollama and try again." });
     }
 
-    const refined = String(result.text || "").trim();
     if (!refined) {
       return res.status(502).json({ success: false, error: "AI returned an empty response" });
     }

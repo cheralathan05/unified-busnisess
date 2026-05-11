@@ -194,7 +194,6 @@ const statusOptions: Array<{ value: LeadStatus; label: string }> = [
   { value: "cold", label: "Cold" },
 ];
 
-const ownerOptions = ["Meera", "Aarav", "Nikhil", "Priya", "Unassigned"];
 const sourceOptions = ["Website", "Referral", "WhatsApp", "Campaign", "Cold Call"];
 const sortOptions: Array<{ value: SortOption; label: string }> = [
   { value: "latest", label: "Newest first" },
@@ -218,7 +217,6 @@ type AddLeadForm = {
   budgetRange: string;
   status: LeadStatus;
   source: string;
-  owner: string;
   projectDescription: string;
 };
 
@@ -310,7 +308,6 @@ export default function Leads() {
     budgetRange: "",
     status: "warm",
     source: "Website",
-    owner: "Unassigned",
     projectDescription: "",
   });
 
@@ -512,7 +509,6 @@ export default function Leads() {
       budgetRange: "",
       status: "warm",
       source: "Website",
-      owner: "Unassigned",
       projectDescription: "",
     });
   };
@@ -1189,21 +1185,6 @@ export default function Leads() {
                     </SelectTrigger>
                     <SelectContent>
                       {sourceOptions.map((option) => (
-                        <SelectItem key={option} value={option}>
-                          {option}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label>Assigned Owner *</Label>
-                  <Select value={addLeadForm.owner} onValueChange={(value) => updateField("owner", value)}>
-                    <SelectTrigger className="h-11 border-border/50 bg-secondary/50">
-                      <SelectValue placeholder="Assign an owner" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {ownerOptions.map((option) => (
                         <SelectItem key={option} value={option}>
                           {option}
                         </SelectItem>

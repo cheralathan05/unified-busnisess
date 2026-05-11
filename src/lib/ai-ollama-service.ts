@@ -27,6 +27,8 @@ interface StreamingOllamaResponse {
 const OLLAMA_API_URL = import.meta.env.VITE_OLLAMA_URL || "http://localhost:11434";
 const DEFAULT_MODEL = import.meta.env.VITE_OLLAMA_MODEL || "llama3:latest";
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
+const OLLAMA_HEALTH_TIMEOUT_MS = 3000;
+const OLLAMA_REQUEST_TIMEOUT_MS = 12000;
 
 async function requestBackendAI<T>(path: string, payload?: unknown): Promise<T | null> {
   try {
@@ -63,7 +65,7 @@ export async function checkOllamaHealth(): Promise<boolean> {
 
   try {
     const response = await fetch(`${OLLAMA_API_URL}/api/tags`, {
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(OLLAMA_HEALTH_TIMEOUT_MS),
     });
     return response.ok;
   } catch {
@@ -126,6 +128,7 @@ Return ONLY a JSON object (no markdown, no code blocks):
     const response = await fetch(`${OLLAMA_API_URL}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(OLLAMA_REQUEST_TIMEOUT_MS),
       body: JSON.stringify({
         model: DEFAULT_MODEL,
         prompt,
@@ -223,6 +226,7 @@ Return ONLY valid JSON (no markdown):
     const response = await fetch(`${OLLAMA_API_URL}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(OLLAMA_REQUEST_TIMEOUT_MS),
       body: JSON.stringify({
         model: DEFAULT_MODEL,
         prompt,
@@ -307,6 +311,7 @@ Be concise, strategic, and compelling. No section headers or formatting.`;
     const response = await fetch(`${OLLAMA_API_URL}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(OLLAMA_REQUEST_TIMEOUT_MS),
       body: JSON.stringify({
         model: DEFAULT_MODEL,
         prompt,
@@ -367,6 +372,7 @@ Return ONLY JSON (no markdown):
     const response = await fetch(`${OLLAMA_API_URL}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(OLLAMA_REQUEST_TIMEOUT_MS),
       body: JSON.stringify({
         model: DEFAULT_MODEL,
         prompt,
@@ -407,6 +413,7 @@ export async function streamAIAnalysis(prompt: string, onChunk: (chunk: string) 
     const response = await fetch(`${OLLAMA_API_URL}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(OLLAMA_REQUEST_TIMEOUT_MS),
       body: JSON.stringify({
         model: DEFAULT_MODEL,
         prompt,
