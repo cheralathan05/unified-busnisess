@@ -902,11 +902,7 @@ export function RequirementsPage() {
         meeting: null,
       } as unknown as RequirementBundle);
     }
-  };
-
-  const handleOpenEditStudio = () => {
-    if (!selectedSubmission) return;
-    setRefinementForm(cloneForm(selectedSubmission.form));
+  };mission.form));
     setIsRefining(true);
   };
 
