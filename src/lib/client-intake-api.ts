@@ -286,14 +286,23 @@ export const refineIntakeDescriptionWithAI = async (payload: {
   priority?: string;
   selectedPackage?: string;
 }) => {
-  return request<{ description: string; provider?: string; model?: string }>(
-    "/intake/ai/refine-description",
-    {
-      method: "POST",
-      body: JSON.stringify(payload),
-    },
-    false,
-  );
+  try {
+    return await request<{ description: string; provider?: string; model?: string }>(
+      "/intake/ai/refine-description",
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+      false,
+    );
+  } catch {
+    // Keep UX stable when AI service is down by returning a safe local fallback.
+    return {
+      description: String(payload.description || "").trim(),
+      provider: "fallback",
+      model: "local-fallback",
+    };
+  }
 };
 
 export const sendClientLink = async (payload: ClientLinkPayload) => {

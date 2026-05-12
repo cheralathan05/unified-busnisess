@@ -137,6 +137,28 @@ function fallbackSummary(businessName: string, projectType: string, features: st
   return `${businessName} is planning a ${projectType} product${preview} to accelerate business growth and user outcomes. The initiative is positioned as a high-impact delivery with clear execution priorities.`;
 }
 
+function fallbackRefinedDescription(input: {
+  projectType: string;
+  goal: string;
+  targetAudience: string;
+  userRoles: string[];
+  modules: string[];
+  features: string[];
+  deadline: string;
+  priority: string;
+  description: string;
+}) {
+  const roles = input.userRoles.slice(0, 4).join(", ") || "core users";
+  const moduleList = input.modules.slice(0, 5).join(", ") || "core modules";
+  const featureList = input.features.slice(0, 6).join(", ") || "key capabilities";
+  const conciseDescription = input.description.slice(0, 180);
+
+  return [
+    `Intent: Deliver a ${input.projectType} initiative focused on ${input.goal} for ${input.targetAudience}, with ${input.priority} priority and delivery by ${input.deadline}.`,
+    `Refined Scope: Build workflows for ${roles} across ${moduleList}, implement ${featureList}, and define milestones from discovery to launch with integration checkpoints, acceptance criteria, and measurable KPIs. Context: ${conciseDescription}`,
+  ].join("\n\n");
+}
+
 function buildFallbackRequirementAnalysis(intake: IntakePayload) {
   const features = normalizeArray(intake.features, []).map((item) => String(item || "").trim()).filter(Boolean);
   const userRoles = normalizeArray(intake.userRoles, []).map((item) => String(item || "").trim()).filter(Boolean);
@@ -652,6 +674,18 @@ router.post("/intake/ai/refine-description", async (req: Request, res: Response)
     return res.status(400).json({ success: false, error: "description is required" });
   }
 
+  const fallback = fallbackRefinedDescription({
+    projectType,
+    goal,
+    targetAudience,
+    userRoles,
+    modules,
+    features,
+    deadline,
+    priority,
+    description,
+  });
+
   try {
     const provider = getAIProvider();
     const compactDescription = description.slice(0, 450);
@@ -682,11 +716,25 @@ router.post("/intake/ai/refine-description", async (req: Request, res: Response)
     const result = await provider.execute(prompt);
     const refined = String(result.text || "").trim();
     if (result.provider !== "ollama") {
-      return res.status(503).json({ success: false, error: "AI is unavailable. Start Ollama and try again." });
+      return res.json({
+        success: true,
+        data: {
+          description: fallback,
+          provider: result.provider,
+          model: result.model,
+        },
+      });
     }
 
     if (!refined) {
-      return res.status(502).json({ success: false, error: "AI returned an empty response" });
+      return res.json({
+        success: true,
+        data: {
+          description: fallback,
+          provider: "fallback",
+          model: result.model,
+        },
+      });
     }
 
     return res.json({
@@ -698,7 +746,14 @@ router.post("/intake/ai/refine-description", async (req: Request, res: Response)
       },
     });
   } catch {
-    return res.status(500).json({ success: false, error: "Failed to refine description with AI" });
+    return res.json({
+      success: true,
+      data: {
+        description: fallback,
+        provider: "fallback",
+        model: "local-fallback",
+      },
+    });
   }
 });
 

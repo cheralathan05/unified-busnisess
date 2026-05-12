@@ -74,20 +74,8 @@ const contactMethods: ClientIntakeForm["preferredContactMethod"][] = ["Email", "
 const launchUrgencies: ClientIntakeForm["launchUrgency"][] = ["ASAP", "1 Month", "3 Months", "Flexible"];
 const authOptions = ["Email Login", "Google Login", "OTP Login", "Social Login", "Multi-role Access"] as const;
 const paymentOptions = ["Razorpay", "Stripe", "PayPal", "Subscription", "One-time Payment"] as const;
-const paymentTypeOptions = ["One-time", "Subscription", "Marketplace Payments"] as const;
 const adminPermissionOptions = ["Manage Users", "View Analytics", "Approve Orders", "Upload Content", "Send Notifications"] as const;
-const adminFeatureOptions = ["User Management", "Reports", "Audit Logs", "Activity Tracking"] as const;
 const aiFeatureOptions = ["Chatbot", "AI Recommendations", "AI Search", "AI Analytics", "AI Content Generation"] as const;
-const integrationOptions = ["Razorpay", "Stripe", "Google Maps", "WhatsApp API", "Firebase", "OpenAI", "Zoom", "Shopify"] as const;
-const targetAudienceSuggestions = ["Students", "Doctors", "Customers", "Businesses", "Parents", "Employees"] as const;
-const suggestionReasonMap: Record<string, string> = {
-  Analytics: "Payment and growth-focused products benefit from conversion tracking.",
-  Dashboard: "Multi-role systems need a live operations overview for teams.",
-  Payment: "Checkout and billing flows require secure transaction handling.",
-  "API Integration": "External integrations need stable connector endpoints.",
-  Notifications: "Time-sensitive workflows need proactive user updates.",
-  "Admin Panel": "Operational control requires centralized admin tooling.",
-};
 const featureLibrary = [
   "Login/Auth",
   "Payment",
@@ -177,7 +165,6 @@ const defaultForm: ClientIntakeForm = {
   modules: [],
   ideaDescription: "",
   targetAudience: "",
-  workflow: "",
   budget: 100000,
   budgetChip: "50kto2l",
   budgetFlexibility: "flexible",
@@ -210,52 +197,9 @@ const defaultForm: ClientIntakeForm = {
   suggestionNotes: [],
   authenticationTypes: [],
   paymentGateway: "",
-  paymentType: "",
   adminPermissions: [],
-  adminFeatures: [],
-  thirdPartyIntegrations: [],
   referenceWebsites: [],
   aiFeaturesNeeded: [],
-};
-
-const normalizeClientIntakeForm = (incoming?: Partial<ClientIntakeForm> | null): ClientIntakeForm => {
-  const draft = incoming ?? {};
-
-  const safeProjectType = projectTypes.includes(draft.projectType as ClientIntakeForm["projectType"])
-    ? (draft.projectType as ClientIntakeForm["projectType"])
-    : defaultForm.projectType;
-
-  const safePriority = draft.priority === "low" || draft.priority === "medium" || draft.priority === "urgent"
-    ? draft.priority
-    : defaultForm.priority;
-
-  const safeSelectedPackage = draft.selectedPackage && draft.selectedPackage in packageMatrix
-    ? draft.selectedPackage
-    : defaultForm.selectedPackage;
-
-  return {
-    ...defaultForm,
-    ...draft,
-    projectType: safeProjectType,
-    priority: safePriority,
-    selectedPackage: safeSelectedPackage,
-    budget: Number.isFinite(draft.budget) ? Number(draft.budget) : defaultForm.budget,
-    estimatedPrice: Number.isFinite(draft.estimatedPrice) ? Number(draft.estimatedPrice) : defaultForm.estimatedPrice,
-    estimatedDeliveryWeeks: Number.isFinite(draft.estimatedDeliveryWeeks) ? Number(draft.estimatedDeliveryWeeks) : defaultForm.estimatedDeliveryWeeks,
-    features: Array.isArray(draft.features) ? draft.features : [],
-    userRoles: Array.isArray(draft.userRoles) ? draft.userRoles : [],
-    modules: Array.isArray(draft.modules) ? draft.modules : [],
-    uploadedFiles: Array.isArray(draft.uploadedFiles) ? draft.uploadedFiles : [],
-    suggestionNotes: Array.isArray(draft.suggestionNotes) ? draft.suggestionNotes : [],
-    authenticationTypes: Array.isArray(draft.authenticationTypes) ? draft.authenticationTypes : [],
-    adminPermissions: Array.isArray(draft.adminPermissions) ? draft.adminPermissions : [],
-    adminFeatures: Array.isArray(draft.adminFeatures) ? draft.adminFeatures : [],
-    thirdPartyIntegrations: Array.isArray(draft.thirdPartyIntegrations) ? draft.thirdPartyIntegrations : [],
-    referenceWebsites: Array.isArray(draft.referenceWebsites) ? draft.referenceWebsites : [],
-    aiFeaturesNeeded: Array.isArray(draft.aiFeaturesNeeded) ? draft.aiFeaturesNeeded : [],
-    costBreakdown: Array.isArray(draft.costBreakdown) ? draft.costBreakdown : defaultForm.costBreakdown,
-    recommendedTeam: Array.isArray(draft.recommendedTeam) ? draft.recommendedTeam : defaultForm.recommendedTeam,
-  };
 };
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
@@ -349,19 +293,7 @@ const getProgressChecklist = (form: ClientIntakeForm) => [
       form.launchUrgency,
     ),
   },
-  {
-    label: "Requirements",
-    done: Boolean(
-      form.projectType &&
-      form.goal &&
-      form.ideaDescription &&
-      form.targetAudience &&
-      form.workflow?.trim() &&
-      form.features.length &&
-      form.userRoles.length &&
-      form.modules.length,
-    ),
-  },
+  { label: "Requirements", done: Boolean(form.projectType && form.goal && form.ideaDescription && form.features.length && form.userRoles.length && form.modules.length) },
   { label: "Budget", done: Boolean(form.budget && form.deadline) },
   { label: "Files", done: Boolean(form.uploadedFiles.length) },
   { label: "Meeting", done: Boolean(form.meetingSlot) },
@@ -379,9 +311,7 @@ const makeAiSummary = (form: ClientIntakeForm) => {
   const launchUrgency = form.launchUrgency || "Flexible";
   const contactLine = `${form.contactName || "Primary contact"}${form.contactRole ? ` (${form.contactRole})` : ""}`;
 
-  const selectedPackage = packageMatrix[form.selectedPackage] ? form.selectedPackage : defaultForm.selectedPackage;
-
-  return `${form.businessName} is planning a ${form.projectType} initiative for ${form.targetAudience || "their core audience"}. The business is in the ${form.businessStage} stage and prefers ${form.preferredContactMethod} communication (${contactLine}). The project emphasizes ${form.features.join(", ") || "core platform capabilities"} with ${urgency}, launch target ${launchUrgency}, selected package ${packageMatrix[selectedPackage].title}, and estimated investment around ${formatInr(form.estimatedPrice)}.`;
+  return `${form.businessName} is planning a ${form.projectType} initiative for ${form.targetAudience || "their core audience"}. The business is in the ${form.businessStage} stage and prefers ${form.preferredContactMethod} communication (${contactLine}). The project emphasizes ${form.features.join(", ") || "core platform capabilities"} with ${urgency}, launch target ${launchUrgency}, selected package ${packageMatrix[form.selectedPackage].title}, and estimated investment around ${formatInr(form.estimatedPrice)}.`;
 };
 
 export default function ClientIntakePremium() {
@@ -414,15 +344,6 @@ export default function ClientIntakePremium() {
     risks: string[];
     recommendations: string[];
   } | null>(null);
-
-  useEffect(() => {
-    if (!accessId) return;
-
-    const draft = getClientIntakeDraft(accessId);
-    if (!draft) return;
-
-    setForm(normalizeClientIntakeForm(draft));
-  }, [accessId]);
 
   // Check Ollama availability on mount
   useEffect(() => {
@@ -483,12 +404,7 @@ export default function ClientIntakePremium() {
           form.deadline,
           form.ideaDescription
         );
-        setAiAnalysis({
-          completionScore: Number.isFinite(analysis?.completionScore) ? analysis.completionScore : 0,
-          insights: Array.isArray(analysis?.insights) ? analysis.insights : [],
-          risks: Array.isArray(analysis?.risks) ? analysis.risks : [],
-          recommendations: Array.isArray(analysis?.recommendations) ? analysis.recommendations : [],
-        });
+        setAiAnalysis(analysis);
       } catch (error) {
         console.error("Error analyzing scope:", error);
       }
@@ -605,8 +521,7 @@ export default function ClientIntakePremium() {
       return total + (map[feature] ?? 9000);
     }, 0);
 
-    const selectedPackage = packageMatrix[form.selectedPackage] ? form.selectedPackage : defaultForm.selectedPackage;
-    const packageBase = packageMatrix[selectedPackage].price;
+    const packageBase = packageMatrix[form.selectedPackage].price;
     const priorityFactor: Record<IntakePriority, number> = {
       low: 0.95,
       medium: 1,
@@ -645,7 +560,7 @@ export default function ClientIntakePremium() {
   useEffect(() => {
     if (!accessId) return;
     const timeout = window.setTimeout(() => {
-      const withPrice = normalizeClientIntakeForm({ ...form, estimatedPrice: dynamicPrice });
+      const withPrice = { ...form, estimatedPrice: dynamicPrice };
       window.localStorage.setItem(`ai-project-os.client-intake-active-step.${accessId}`, String(currentStep));
       saveClientIntakeDraft(accessId, withPrice);
       setSaveStatus("saved");
@@ -660,17 +575,7 @@ export default function ClientIntakePremium() {
   const savedLabel = saveStatus === "saving" ? "Saving..." : "Saved just now ✓";
   const completedChecklistCount = progressChecklist.filter((item) => item.done).length;
   const readinessPercent = Math.round((completedChecklistCount / progressChecklist.length) * 100);
-  const requirementGaps = [
-    !form.goal && "Missing goal",
-    !form.features.length && "Missing features",
-    !form.userRoles.length && "Missing user roles",
-    !form.modules.length && "Missing modules",
-    !form.targetAudience.trim() && "Missing target audience",
-    !form.workflow?.trim() && "Missing workflow",
-    form.features.includes("AI Assistant") && !form.aiFeaturesNeeded.length && "Missing AI assistant type",
-    form.features.includes("Payment") && !form.paymentType && "Missing payment type",
-    form.features.includes("Admin Panel") && !(form.adminFeatures?.length ?? 0) && "Missing admin features",
-  ].filter(Boolean) as string[];
+  const estimatedValueBand = formatInr(dynamicPrice).replace("₹", "INR ");
 
   const setField = <K extends keyof ClientIntakeForm>(key: K, value: ClientIntakeForm[K]) => {
     setSaveStatus("saving");
@@ -712,20 +617,6 @@ export default function ClientIntakePremium() {
   const toggleAIFeature = (feature: string) => {
     const next = form.aiFeaturesNeeded.includes(feature) ? form.aiFeaturesNeeded.filter((f) => f !== feature) : [...form.aiFeaturesNeeded, feature];
     setField("aiFeaturesNeeded", next);
-  };
-
-  const toggleIntegration = (integration: string) => {
-    const next = form.thirdPartyIntegrations?.includes(integration)
-      ? form.thirdPartyIntegrations.filter((item) => item !== integration)
-      : [...(form.thirdPartyIntegrations ?? []), integration];
-    setField("thirdPartyIntegrations", next);
-  };
-
-  const toggleAdminFeature = (feature: string) => {
-    const next = form.adminFeatures?.includes(feature)
-      ? form.adminFeatures.filter((item) => item !== feature)
-      : [...(form.adminFeatures ?? []), feature];
-    setField("adminFeatures", next);
   };
 
   const addFiles = async (incoming: FileList | null) => {
@@ -813,25 +704,8 @@ export default function ClientIntakePremium() {
         nextErrors.targetAudience = "Enter a valid target audience";
       }
 
-      if (!form.workflow?.trim()) nextErrors.workflow = "Main workflow is required";
-      else if (form.workflow.trim().length < 12) {
-        nextErrors.workflow = "Workflow should be at least 12 characters";
-      }
-
       if (form.features.includes("Payment") && !form.paymentGateway) {
         nextErrors.paymentGateway = "Select a payment gateway";
-      }
-
-      if (form.features.includes("Payment") && !form.paymentType) {
-        nextErrors.paymentType = "Select a payment type";
-      }
-
-      if (form.features.includes("AI Assistant") && !form.aiFeaturesNeeded.length) {
-        nextErrors.aiFeaturesNeeded = "Select at least one AI assistant type";
-      }
-
-      if (form.features.includes("Admin Panel") && !(form.adminFeatures?.length ?? 0)) {
-        nextErrors.adminFeatures = "Select at least one admin feature";
       }
     }
 
@@ -1303,58 +1177,29 @@ export default function ClientIntakePremium() {
               {currentStep === 2 && (
                 <motion.div key="step2" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
                   <h2 className="text-2xl font-semibold">Step 2: Project Requirements</h2>
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-4">
-                    <h3 className="text-sm font-semibold text-cyan-100">Product Foundation</h3>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div>
-                        <p className="mb-1 text-xs font-medium text-white/75">Project Type</p>
-                        <Select value={form.projectType} onValueChange={(value) => setField("projectType", value as ClientIntakeForm["projectType"])}>
-                          <SelectTrigger className="border-white/10 bg-black/20">
-                            <SelectValue placeholder="Project Type" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {projectTypes.map((item) => (
-                              <SelectItem key={item} value={item}>
-                                {item}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {errors.projectType && <p className="mt-1 text-xs text-rose-300">{errors.projectType}</p>}
-                      </div>
-                      <div>
-                        <p className="mb-1 text-xs font-medium text-white/75">Target Audience</p>
-                        <Input
-                          value={form.targetAudience}
-                          onChange={(e) => setField("targetAudience", e.target.value)}
-                          placeholder="Who will use this system?"
-                          className="border-white/10 bg-black/20"
-                        />
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {targetAudienceSuggestions.map((audience) => (
-                            <button
-                              key={audience}
-                              type="button"
-                              onClick={() => setField("targetAudience", audience)}
-                              className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] text-white/70 hover:bg-white/10"
-                            >
-                              {audience}
-                            </button>
-                          ))}
-                        </div>
-                        {errors.targetAudience && <p className="mt-1 text-xs text-rose-300">{errors.targetAudience}</p>}
-                      </div>
-                    </div>
-
+                  <div className="grid gap-3 md:grid-cols-2">
                     <div>
-                      <p className="mb-1 text-xs font-medium text-white/75">Main Workflow</p>
-                      <Textarea
-                        value={form.workflow ?? ""}
-                        onChange={(e) => setField("workflow", e.target.value)}
-                        placeholder="User signs up -> buys course -> receives dashboard access -> admin tracks analytics"
-                        className="min-h-20 border-white/10 bg-black/20"
+                      <Select value={form.projectType} onValueChange={(value) => setField("projectType", value as ClientIntakeForm["projectType"])}>
+                        <SelectTrigger className="border-white/10 bg-black/20">
+                          <SelectValue placeholder="Project Type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {projectTypes.map((item) => (
+                            <SelectItem key={item} value={item}>
+                              {item}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Input
+                        value={form.targetAudience}
+                        onChange={(e) => setField("targetAudience", e.target.value)}
+                        placeholder="Target Audience"
+                        className="border-white/10 bg-black/20"
                       />
-                      {errors.workflow && <p className="mt-1 text-xs text-rose-300">{errors.workflow}</p>}
+                      {errors.targetAudience && <p className="mt-1 text-xs text-rose-300">{errors.targetAudience}</p>}
                     </div>
                   </div>
 
@@ -1391,22 +1236,6 @@ export default function ClientIntakePremium() {
                               ))}
                             </SelectContent>
                           </Select>
-                          {errors.paymentGateway && <p className="mt-1 text-xs text-rose-300">{errors.paymentGateway}</p>}
-
-                          <p className="mb-2 mt-3 text-sm text-white/70">Payment Type</p>
-                          <div className="flex flex-wrap gap-2">
-                            {paymentTypeOptions.map((type) => (
-                              <button
-                                key={type}
-                                type="button"
-                                onClick={() => setField("paymentType", type)}
-                                className={`rounded-full border px-3 py-2 text-sm transition ${form.paymentType === type ? "border-cyan-300/60 bg-cyan-300/15 text-cyan-100" : "border-white/10 bg-black/20 text-white/70"}`}
-                              >
-                                {type}
-                              </button>
-                            ))}
-                          </div>
-                          {errors.paymentType && <p className="mt-1 text-xs text-rose-300">{errors.paymentType}</p>}
                         </div>
                       )}
 
@@ -1425,7 +1254,6 @@ export default function ClientIntakePremium() {
                               </button>
                             ))}
                           </div>
-                          {errors.aiFeaturesNeeded && <p className="mt-1 text-xs text-rose-300">{errors.aiFeaturesNeeded}</p>}
                         </div>
                       ) : null}
 
@@ -1444,25 +1272,6 @@ export default function ClientIntakePremium() {
                               </button>
                             ))}
                           </div>
-                        </div>
-                      )}
-
-                      {form.features.includes("Admin Panel") && (
-                        <div className="mt-3">
-                          <p className="mb-2 text-sm text-white/70">Admin Features</p>
-                          <div className="flex flex-wrap gap-2">
-                            {adminFeatureOptions.map((feature) => (
-                              <button
-                                key={feature}
-                                type="button"
-                                onClick={() => toggleAdminFeature(feature)}
-                                className={`rounded-full border px-3 py-2 text-sm transition ${form.adminFeatures?.includes(feature) ? "border-cyan-300/60 bg-cyan-300/15 text-cyan-100" : "border-white/10 bg-black/20 text-white/70"}`}
-                              >
-                                {feature}
-                              </button>
-                            ))}
-                          </div>
-                          {errors.adminFeatures && <p className="mt-1 text-xs text-rose-300">{errors.adminFeatures}</p>}
                         </div>
                       )}
 
@@ -1565,64 +1374,26 @@ export default function ClientIntakePremium() {
                     {errors.modules && <p className="mt-1 text-xs text-rose-300">{errors.modules}</p>}
                   </div>
 
-                  <div>
-                    <p className="mb-2 text-sm text-white/70">Third-party Integrations</p>
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                      {integrationOptions.map((integration) => (
-                        <button
-                          key={integration}
-                          type="button"
-                          onClick={() => toggleIntegration(integration)}
-                          className={`rounded-xl border px-3 py-2 text-left text-sm transition ${form.thirdPartyIntegrations?.includes(integration) ? "border-cyan-300/60 bg-cyan-300/15 text-cyan-100" : "border-white/10 bg-black/20 text-white/70 hover:text-white"}`}
-                        >
-                          {integration}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
                   {/* AI Suggestions */}
                   {aiSuggestions.length > 0 && (
-                    <div className="space-y-3">
-                      <SmartSuggestions
-                        suggestions={aiSuggestions}
-                        onAddFeature={(feature) => {
-                          if (!form.features.includes(feature)) {
-                            toggleFeature(feature);
-                          }
-                        }}
-                        isLoading={isLoadingSuggestions}
-                      />
-                      <div className="rounded-xl border border-cyan-300/20 bg-cyan-300/5 p-3">
-                        <p className="text-xs font-semibold text-cyan-200">Why Suggested?</p>
-                        <div className="mt-2 space-y-1 text-xs text-white/75">
-                          {aiSuggestions.map((item) => (
-                            <p key={`reason-${item}`}>
-                              <span className="text-cyan-200">+ {item}</span> Reason: {suggestionReasonMap[item] ?? "Matched from your selected project type, goal, and modules."}
-                            </p>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
+                    <SmartSuggestions
+                      suggestions={aiSuggestions}
+                      onAddFeature={(feature) => {
+                        if (!form.features.includes(feature)) {
+                          toggleFeature(feature);
+                        }
+                      }}
+                      isLoading={isLoadingSuggestions}
+                    />
                   )}
 
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <p className="mb-2 text-sm text-white/70">Upload UI references or wireframes</p>
-                    <label className="flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-white/20 bg-white/5 px-4 py-3 text-xs text-white/70 hover:bg-white/10">
-                      Click to add design files
-                      <input type="file" multiple className="hidden" onChange={(e) => void addFiles(e.target.files)} />
-                    </label>
-                  </div>
-
                   <div>
-                    <p className="mb-2 text-sm text-white/70">Project Description</p>
                     <Textarea
                       value={form.ideaDescription}
                       onChange={(e) => setField("ideaDescription", e.target.value)}
-                      placeholder="Describe your project idea..."
+                      placeholder={`Project Description\nExplain:\n• What problem are you solving?\n• What should users achieve?\n• Any reference apps or URLs?`}
                       className="min-h-32 border-white/10 bg-black/20"
                     />
-                    <p className="mt-2 text-xs text-white/60">• What problem are you solving? • What should users achieve? • Any reference apps or workflows?</p>
                     {errors.ideaDescription && <p className="mt-1 text-xs text-rose-300">{errors.ideaDescription}</p>}
                   </div>
                 </motion.div>
@@ -2125,16 +1896,6 @@ export default function ClientIntakePremium() {
                   ))}
                 </div>
               </div> 
-              {requirementGaps.length > 0 && (
-                <div className="mt-3 rounded-xl border border-amber-300/20 bg-amber-300/5 p-3">
-                  <p className="text-xs font-semibold text-amber-200">Missing For Full Quality</p>
-                  <div className="mt-2 space-y-1 text-xs text-amber-100/90">
-                    {requirementGaps.slice(0, 6).map((gap) => (
-                      <p key={gap}>⚠ {gap}</p>
-                    ))}
-                  </div>
-                </div>
-              )}
               <p className="mt-2 text-sm text-white/65">Real AI response updates as you enter project details.</p>
               <p className="mt-3 text-xs text-cyan-200/90">{liveAiStatus}</p>
               <motion.div
