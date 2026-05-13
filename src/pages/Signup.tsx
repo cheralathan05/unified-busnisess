@@ -8,6 +8,9 @@ import { PageTransition } from "@/components/PageTransition";
 import { authApi, ApiError } from "@/lib/auth-api";
 import { toast } from "sonner";
 
+export default function Signup() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const prefilledEmail = (location.state as { email?: string } | null)?.email ?? "";
   const [name, setName] = useState("");
   const [email, setEmail] = useState(prefilledEmail);
