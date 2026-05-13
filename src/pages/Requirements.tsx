@@ -1759,14 +1759,15 @@ export function RequirementsPage() {
       </div>
 
       <Dialog open={isRefining} onOpenChange={setIsRefining}>
-        <DialogContent className="max-w-7xl bg-[#0a1224] text-white border-blue-400/30">
+        <DialogContent className="max-w-7xl">
           <DialogHeader>
             <DialogTitle>Requirement Refinement Studio</DialogTitle>
             <DialogDescription>
               {studioLocked ? "Viewing locked requirement. Unlock to make changes." : "Refine and lock the client's project requirements."}
             </DialogDescription>
           </DialogHeader>
-          <div className="grid max-h-[78vh] grid-cols-1 gap-6 overflow-y-auto p-1 xl:grid-cols-[1.15fr_0.85fr]">
+          <div className="overflow-y-auto px-6 flex-1">
+          <div className="grid grid-cols-1 gap-6 p-1 xl:grid-cols-[1.15fr_0.85fr]">
             <div className="space-y-4">
               <section className="rounded-2xl border border-white/10 bg-white/5 p-4">
                 <div className="mb-4 flex items-center justify-between gap-3">
@@ -2006,6 +2007,7 @@ export function RequirementsPage() {
               </section>
             </div>
           </div>
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsRefining(false)}>Cancel</Button>
             {!studioLocked ? <Button onClick={handleSaveRefinement} className="bg-blue-600 text-white hover:bg-blue-500">Save Requirement</Button> : null}
@@ -2014,7 +2016,7 @@ export function RequirementsPage() {
       </Dialog>
 
       <Dialog open={isLocking} onOpenChange={setIsLocking}>
-        <DialogContent className="max-w-2xl bg-[#0a1224] text-white border-blue-400/30">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Lock Final Requirement Version</DialogTitle>
             <DialogDescription>
@@ -2022,6 +2024,7 @@ export function RequirementsPage() {
             </DialogDescription>
           </DialogHeader>
           
+          <div className="overflow-y-auto px-6 flex-1">
           {selectedSubmission ? (
             <div className="space-y-4">
               <section className="rounded-lg border border-white/10 bg-white/5 p-4">
@@ -2105,6 +2108,7 @@ export function RequirementsPage() {
           ) : (
             <p className="text-white/80">No requirement selected</p>
           )}
+          </div>
 
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setIsLocking(false)}>
@@ -2122,13 +2126,14 @@ export function RequirementsPage() {
       </Dialog>
 
       <Dialog open={isUnlocking} onOpenChange={setIsUnlocking}>
-        <DialogContent className="max-w-xl bg-[#0a1224] text-white border-blue-400/30">
+        <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>Unlock Requirement Version</DialogTitle>
             <DialogDescription>
               Enter the lock PIN or use admin override to reopen editing.
             </DialogDescription>
           </DialogHeader>
+          <div className="overflow-y-auto px-6 flex-1">
           <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
             <p className="text-sm text-white/80">Locked version v{finalVersionSnapshot}</p>
             <p className="text-xs text-white/60">Failed attempts: {lockSnapshot?.unlockFailedAttempts ?? 0}</p>
@@ -2145,17 +2150,18 @@ export function RequirementsPage() {
               className="bg-white/5 tracking-[0.4em]"
             />
           </div>
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsUnlocking(false)}>Cancel</Button>
-            {isAdmin ? (
-              <Button variant="outline" className="border-amber-300/40 bg-amber-500/10 text-amber-50 hover:bg-amber-500/20" onClick={() => handleConfirmUnlock(true)}>
-                Admin Override
+              <Button variant="outline" onClick={() => setIsUnlocking(false)}>Cancel</Button>
+              {isAdmin ? (
+                <Button variant="outline" className="border-amber-300/40 bg-amber-500/10 text-amber-50 hover:bg-amber-500/20" onClick={() => handleConfirmUnlock(true)}>
+                  Admin Override
+                </Button>
+              ) : null}
+              <Button onClick={() => handleConfirmUnlock(false)} className="bg-amber-500 text-white hover:bg-amber-400" disabled={unlockPin.length !== 4}>
+                Unlock
               </Button>
-            ) : null}
-            <Button onClick={() => handleConfirmUnlock(false)} className="bg-amber-500 text-white hover:bg-amber-400" disabled={unlockPin.length !== 4}>
-              Unlock
-            </Button>
-          </DialogFooter>
+            </DialogFooter>
         </DialogContent>
       </Dialog>
     </DashboardLayout>
