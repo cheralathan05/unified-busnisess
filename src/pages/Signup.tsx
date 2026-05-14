@@ -23,7 +23,13 @@ export default function Signup() {
     try {
       setIsSubmitting(true);
       await authApi.signup({
-       
+        name: name.trim(),
+        email: email.trim(),
+        password,
+      });
+      toast.success("Account created. Sign in with the same email and password.");
+      navigate("/login", { state: { email: email.trim() }, replace: true });
+    } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "Unable to create account.");
     } finally {
       setIsSubmitting(false);
