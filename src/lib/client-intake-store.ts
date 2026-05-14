@@ -36,7 +36,6 @@ export type PaymentSchedule = {
 
 export type AuthType = "Email Login" | "Google Login" | "OTP Login" | "Social Login" | "Multi-role Access";
 export type PaymentGateway = "Razorpay" | "Stripe" | "PayPal" | "Subscription" | "One-time Payment";
-export type PaymentType = "One-time" | "Subscription" | "Marketplace Payments";
 
 export type ClientIntakeForm = {
   businessName: string;
@@ -59,7 +58,6 @@ export type ClientIntakeForm = {
   modules: string[];
   ideaDescription: string;
   targetAudience: string;
-  workflow?: string;
   budget: number;
   budgetChip?: BudgetChip;
   budgetFlexibility?: BudgetFlexibility;
@@ -78,10 +76,7 @@ export type ClientIntakeForm = {
   suggestionNotes: string[];
   authenticationTypes?: AuthType[];
   paymentGateway?: PaymentGateway | "";
-  paymentType?: PaymentType | "";
   adminPermissions?: string[];
-  adminFeatures?: string[];
-  thirdPartyIntegrations?: string[];
   referenceWebsites?: string[];
   aiFeaturesNeeded?: string[];
 };
@@ -197,13 +192,9 @@ const buildLeadRequirements = (form: ClientIntakeForm): LeadRequirements => {
     ...form.userRoles.filter((item) => ["Admin", "Staff", "Vendor"].includes(item)).map((role) => `${role} access control`),
   ];
   const integrations = form.features.filter((item) => ["AI Assistant", "Analytics", "Notifications", "Payment", "API Integration"].includes(item));
-  const workflowLine = form.workflow?.trim() ? [`Workflow: ${form.workflow.trim()}`] : [];
-  const thirdParty = Array.isArray(form.thirdPartyIntegrations) && form.thirdPartyIntegrations.length
-    ? form.thirdPartyIntegrations.map((item) => `Integration: ${item}`)
-    : [];
 
   return {
-    features: [...form.features, ...form.modules, ...form.userRoles, ...workflowLine, ...thirdParty],
+    features: [...form.features, ...form.modules, ...form.userRoles],
     budgetSummary: `${formatInr(form.budget)} to ${formatInr(form.estimatedPrice)}`,
     timelineSummary,
     prioritySummary,
@@ -223,7 +214,6 @@ const buildMeetingNotes = (form: ClientIntakeForm, aiSummary: string) => {
     `Timezone: ${form.timezone || "Not provided"}`,
     `Project Type: ${form.projectType}`,
     `Target Audience: ${form.targetAudience}`,
-    `Workflow: ${form.workflow?.trim() || "Not provided"}`,
     `Priority: ${form.priority}`,
     `Business Stage: ${form.businessStage || "Not provided"}`,
     `Launch Urgency: ${form.launchUrgency || "Not provided"}`,
@@ -241,10 +231,7 @@ const buildMeetingNotes = (form: ClientIntakeForm, aiSummary: string) => {
     `Meeting Slot: ${form.meetingSlot || "Not selected"}`,
     `Authentication: ${Array.isArray(form.authenticationTypes) ? form.authenticationTypes.join(", ") : form.authenticationTypes || "Not provided"}`,
     `Payment Gateway: ${form.paymentGateway || "Not provided"}`,
-    `Payment Type: ${form.paymentType || "Not provided"}`,
     `Admin Permissions: ${Array.isArray(form.adminPermissions) ? form.adminPermissions.join(", ") : "None"}`,
-    `Admin Features: ${Array.isArray(form.adminFeatures) ? form.adminFeatures.join(", ") : "None"}`,
-    `Integrations: ${Array.isArray(form.thirdPartyIntegrations) ? form.thirdPartyIntegrations.join(", ") : "None"}`,
     `References: ${Array.isArray(form.referenceWebsites) ? form.referenceWebsites.join(", ") : "None"}`,
     `AI Features: ${Array.isArray(form.aiFeaturesNeeded) ? form.aiFeaturesNeeded.join(", ") : "None"}`,
     `AI Summary: ${aiSummary}`,

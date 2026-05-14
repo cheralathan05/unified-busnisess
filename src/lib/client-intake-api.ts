@@ -23,15 +23,11 @@ type BackendIntakeSubmission = {
   formData?: Partial<ClientIntakeForm> & {
     businessName?: string;
     contactName?: string;
-    contactRole?: string;
     email?: string;
     goal?: string;
     userRoles?: string[];
     modules?: string[];
     targetAudience?: string;
-    preferredContactMethod?: ClientIntakeForm["preferredContactMethod"];
-    businessStage?: ClientIntakeForm["businessStage"];
-    launchUrgency?: ClientIntakeForm["launchUrgency"];
     priority?: ClientIntakeForm["priority"];
     selectedPackage?: ClientIntakeForm["selectedPackage"];
     suggestionNotes?: string[];
@@ -210,17 +206,10 @@ const toSubmission = (item: BackendIntakeSubmission): ClientIntakeSubmission => 
     form: {
       businessName: formData.businessName ?? item.lead?.company ?? "",
       industry: formData.industry ?? "",
-      businessWebsite: formData.businessWebsite ?? "",
-      country: formData.country ?? "India",
-      timezone: formData.timezone ?? "Asia/Kolkata",
       contactName: formData.contactName ?? item.lead?.name ?? "",
-      contactRole: formData.contactRole ?? "",
       email: formData.email ?? "",
       phone: formData.phone ?? "",
-      preferredContactMethod: (formData.preferredContactMethod as ClientIntakeForm["preferredContactMethod"]) ?? "Email",
       companySize: formData.companySize ?? "",
-      businessStage: (formData.businessStage as ClientIntakeForm["businessStage"]) ?? "Startup",
-      launchUrgency: (formData.launchUrgency as ClientIntakeForm["launchUrgency"]) ?? "Flexible",
       projectType: (formData.projectType as ClientIntakeForm["projectType"]) ?? "Website",
       goal: formData.goal ?? "",
       features: formData.features ?? [],
@@ -286,23 +275,14 @@ export const refineIntakeDescriptionWithAI = async (payload: {
   priority?: string;
   selectedPackage?: string;
 }) => {
-  try {
-    return await request<{ description: string; provider?: string; model?: string }>(
-      "/intake/ai/refine-description",
-      {
-        method: "POST",
-        body: JSON.stringify(payload),
-      },
-      false,
-    );
-  } catch {
-    // Keep UX stable when AI service is down by returning a safe local fallback.
-    return {
-      description: String(payload.description || "").trim(),
-      provider: "fallback",
-      model: "local-fallback",
-    };
-  }
+  return request<{ description: string; provider?: string; model?: string }>(
+    "/intake/ai/refine-description",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+    false,
+  );
 };
 
 export const sendClientLink = async (payload: ClientLinkPayload) => {

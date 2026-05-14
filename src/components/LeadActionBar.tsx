@@ -184,10 +184,14 @@ export function LeadActionBar({ lead, onRefresh, onEdit }: Props) {
 
   const withLoading = async (key: string, fn: () => Promise<void>) => {
     try {
+      console.log(`🔄 Starting action: ${key}`);
       setLoadingAction(key);
       await fn();
+      console.log(`✅ Action completed: ${key}`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Action failed");
+      const errorMessage = error instanceof Error ? error.message : "Action failed";
+      console.error(`❌ Action failed: ${key}`, error);
+      toast.error(errorMessage);
     } finally {
       setLoadingAction(null);
     }
@@ -366,18 +370,41 @@ export function LeadActionBar({ lead, onRefresh, onEdit }: Props) {
   };
 
   const sendIntakeLink = async () => {
-    const response = await sendClientLink({
-      leadId: String(lead.id),
-      name: lead.name,
-      company: lead.company,
-      email: canEmail ? lead.email : undefined,
-    });
-
-    if (navigator?.clipboard?.writeText) {
-      await navigator.clipboard.writeText(response.link);
+    console.log("📧 Starting send client link for lead:", lead.id);
+    
+    if (!lead.id) {
+      throw new Error("Lead ID is required");
     }
 
-    toast.success("Client intake link sent. Secure URL copied to clipboard.");
+    try {
+      const response = await sendClientLink({
+        leadId: String(lead.id),
+        name: lead.name,
+        company: lead.company,
+        email: canEmail ? lead.email : undefined,
+      });
+
+      console.log("✅ Client link response:", response);
+
+      if (!response?.link) {
+        throw new Error("No client link returned from server");
+      }
+
+      try {
+        if (navigator?.clipboard?.writeText) {
+          await navigator.clipboard.writeText(response.link);
+          console.log("📋 Link copied to clipboard");
+        }
+      } catch (clipboardError) {
+        console.warn("⚠️ Failed to copy to clipboard:", clipboardError);
+      }
+
+      toast.success("Client intake link sent. Secure URL copied to clipboard.");
+      console.log("✅ Send client link completed successfully");
+    } catch (error) {
+      console.error("❌ Error sending client link:", error);
+      throw error;
+    }
   };
 
   const scheduleMeeting = async () => {

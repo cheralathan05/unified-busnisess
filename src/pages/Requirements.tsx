@@ -85,23 +85,6 @@ type RefinementVersion = {
 
 type RefinementVersionStore = Record<string, RefinementVersion[]>;
 
-type RequirementAuditEntry = {
-  id: string;
-  leadId: string;
-  action: "locked" | "unlocked";
-  actor: string;
-  role: string;
-  at: number;
-  version: number;
-  score: number;
-  notes: string[];
-};
-
-type RequirementAuditStore = Record<string, RequirementAuditEntry[]>;
-
-const REFINEMENT_VERSION_STORAGE_KEY = "ai-project-os.refinement-versions";
-const REQUIREMENT_AUDIT_STORAGE_KEY = "ai-project-os.requirement-audit";
-
 type RequirementLockValidation = {
   missing: string[];
   lockScore: number;
@@ -109,11 +92,7 @@ type RequirementLockValidation = {
   completionPercent: number;
 };
 
-type RequirementLockCheck = {
-  label: string;
-  ok: boolean;
-  required: boolean;
-};
+const REFINEMENT_VERSION_STORAGE_KEY = "ai-project-os.refinement-versions";
 
 const FEATURE_LIBRARY: Record<FeatureCategory, string[]> = {
   Auth: ["Login/Auth", "Role-based Access", "SSO", "2FA"],
@@ -124,7 +103,7 @@ const FEATURE_LIBRARY: Record<FeatureCategory, string[]> = {
 
 const ROLE_PRESETS = ["Admin", "Customer", "Vendor", "Staff"];
 const MODULE_PRESETS = ["Home", "Dashboard", "Checkout", "Profile", "Settings", "Reports"];
-const PROJECT_TYPE_OPTIONS: ClientIntakeForm["projectType"][] = ["Website", "Mobile App", "Web App", "AI", "CRM", "Other"];
+const PROJECT_TYPE_OPTIONS: ClientIntakeForm["projectType"][] = ["Website", "App", "AI", "CRM", "Other"];
 const PRIORITY_OPTIONS: ClientIntakeForm["priority"][] = ["low", "medium", "urgent"];
 const PACKAGE_OPTIONS: ClientIntakeForm["selectedPackage"][] = ["basic", "growth", "premium"];
 const COMPANY_SIZE_OPTIONS = ["1-5", "6-20", "21-50", "51-200", "200+"];
@@ -418,22 +397,6 @@ const saveVersionStore = (store: RefinementVersionStore) => {
   window.localStorage.setItem(REFINEMENT_VERSION_STORAGE_KEY, JSON.stringify(store));
 };
 
-const getAuditStore = (): RequirementAuditStore => {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = window.localStorage.getItem(REQUIREMENT_AUDIT_STORAGE_KEY);
-    if (!raw) return {};
-    return JSON.parse(raw) as RequirementAuditStore;
-  } catch {
-    return {};
-  }
-};
-
-const saveAuditStore = (store: RequirementAuditStore) => {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(REQUIREMENT_AUDIT_STORAGE_KEY, JSON.stringify(store));
-};
-
 const formatDateTime = (value?: string | number) => {
   if (!value) return "Not available";
   const date = typeof value === "number" ? new Date(value) : new Date(value);
@@ -661,11 +624,7 @@ export function RequirementsPage() {
   const [isRefiningAi, setIsRefiningAi] = useState(false);
   const [isLocking, setIsLocking] = useState(false);
   const [isUnlocking, setIsUnlocking] = useState(false);
-  const [lockPin, setLockPin] = useState("");
-  const [confirmLockPin, setConfirmLockPin] = useState("");
-  const [lockAgreement, setLockAgreement] = useState(false);
-  const [unlockPin, setUnlockPin] = useState("");
-  const [requirementAudit, setRequirementAudit] = useState<RequirementAuditStore>(getAuditStore());
+  const [password, setPassword] = useState("");
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -697,10 +656,6 @@ export function RequirementsPage() {
 
     loadData();
   }, []);
-
-  useEffect(() => {
-    saveAuditStore(requirementAudit);
-  }, [requirementAudit]);
 
   const submittedEntries = useMemo<SubmittedLeadEntry[]>(() => {
     const leadMap = new Map<number, LeadRecord>();
@@ -769,56 +724,16 @@ export function RequirementsPage() {
     return conf > 0 ? Math.round(conf * 100) : 60;
   }, [requirementBundle]);
 
+  const draftCompleteness = useMemo(() => computeRefinementCompleteness(refinementForm), [refinementForm]);
+  const draftIssues = useMemo(() => buildValidationIssues(refinementForm), [refinementForm]);
+  const draftSuggestions = useMemo(() => buildRefinementSuggestions(refinementForm, draftIssues), [draftIssues, refinementForm]);
+
   const aiSummary = useMemo(() => {
     if (!selectedSubmission) return "";
     const bundleSummary = requirementBundle?.requirements?.summary;
     if (bundleSummary && !/^AI unavailable/i.test(bundleSummary)) return bundleSummary;
     return selectedSubmission.aiSummary || "AI summary not available. Regenerate to create one.";
   }, [selectedSubmission, requirementBundle]);
-
-  const lockValidationChecks = useMemo<RequirementLockCheck[]>(() => {
-    if (!selectedSubmission) {
-      return [{ label: "No submission selected", ok: false, required: true }];
-    }
-
-    const form = selectedSubmission.form;
-    const uploadedFiles = Array.isArray(form.uploadedFiles) ? form.uploadedFiles : [];
-    const hasApiReference = uploadedFiles.some((file) => /api|swagger|postman|json/.test(String(file.name ?? "").toLowerCase()));
-    const hasDesignReference = uploadedFiles.some((file) => /figma|wireframe|ui|design/.test(String(file.name ?? "").toLowerCase()) || Boolean(file.isImage));
-    
-    const bundleSummary = requirementBundle?.requirements?.summary;
-    const currentAiSummary = bundleSummary && !/^AI unavailable/i.test(bundleSummary) ? bundleSummary : (selectedSubmission.aiSummary || "");
-
-    return [
-      { label: "Client information complete", ok: Boolean(form.businessName?.trim() && form.contactName?.trim() && form.email?.trim()), required: true },
-      { label: "Goals added", ok: Boolean(form.goal?.trim()), required: true },
-      { label: "Features selected", ok: form.features.length > 0, required: true },
-      { label: "User roles defined", ok: form.userRoles.length > 0, required: true },
-      { label: "Modules/pages added", ok: form.modules.length > 0, required: true },
-      { label: "Budget added", ok: Number(form.budget) > 0, required: true },
-      { label: "Timeline added", ok: Boolean(form.deadline?.trim()), required: true },
-      { label: "Meeting completed", ok: Boolean(requirementBundle?.meeting?.dateTime), required: true },
-      { label: "AI summary generated", ok: Boolean(currentAiSummary.trim()), required: true },
-      { label: "API documentation attached", ok: hasApiReference, required: false },
-      { label: "Design references attached", ok: hasDesignReference, required: false },
-    ];
-  }, [requirementBundle, selectedSubmission]);
-
-  const lockReadinessPercent = useMemo(() => {
-    const requiredChecks = lockValidationChecks.filter((check) => check.required);
-    if (!requiredChecks.length) return 0;
-    const passed = requiredChecks.filter((check) => check.ok).length;
-    return Math.round((passed / requiredChecks.length) * 100);
-  }, [lockValidationChecks]);
-
-  const lockAdvisories = useMemo(
-    () => lockValidationChecks.filter((check) => !check.required && !check.ok),
-    [lockValidationChecks],
-  );
-
-  const draftCompleteness = useMemo(() => computeRefinementCompleteness(refinementForm), [refinementForm]);
-  const draftIssues = useMemo(() => buildValidationIssues(refinementForm), [refinementForm]);
-  const draftSuggestions = useMemo(() => buildRefinementSuggestions(refinementForm, draftIssues), [draftIssues, refinementForm]);
 
   const requirementBreakdown = useMemo(() => {
     if (!selectedSubmission) return [];
@@ -831,25 +746,28 @@ export function RequirementsPage() {
   }, [selectedSubmission, requirementBundle]);
 
   const { lockScore, readyToLock, missing: lockMissing } = useMemo((): RequirementLockValidation => {
-    const requiredMissing = lockValidationChecks.filter((check) => check.required && !check.ok).map((check) => check.label);
-    const score = Math.round((lockReadinessPercent * 0.6) + (Math.min(100, completeness.percent) * 0.25) + (Math.min(100, aiConfidence) * 0.15));
+    if (!selectedSubmission) return { lockScore: 0, readyToLock: false, missing: ["No submission"], completionPercent: 0 };
+
+    const missing: string[] = [];
+    if (completeness.percent < 80) missing.push("Low completeness score");
+    if (!hasLinkedLead) missing.push("Not linked to a lead");
+    if (!requirementBundle?.requirements?.items?.length) missing.push("No requirement items");
+
+    const score = Math.max(0, 100 - missing.length * 25 - (100 - completeness.percent) / 2);
 
     return {
-      lockScore: score,
-      readyToLock: requiredMissing.length === 0,
-      missing: requiredMissing,
+      lockScore: Math.round(score),
+      readyToLock: score >= 70,
+      missing,
       completionPercent: completeness.percent,
     };
-  }, [aiConfidence, completeness.percent, lockReadinessPercent, lockValidationChecks]);
+  }, [selectedSubmission, completeness, aiConfidence, hasLinkedLead, requirementBundle]);
 
   const finalVersion = useMemo(() => {
     if (!selectedLead) return 1;
     const versions = refinementVersions[selectedLead.id] ?? [];
     return versions.length + 1;
   }, [selectedLead, refinementVersions]);
-
-  const finalVersionSnapshot = lockSnapshot?.lockedVersion ?? finalVersion;
-  const auditTrail = selectedLead ? requirementAudit[selectedLead.id] ?? [] : [];
 
   const pipeline = useMemo((): PipelineStage[] => {
     const base: PipelineStage[] = [
@@ -886,17 +804,10 @@ export function RequirementsPage() {
       const bundle = await fetchLeadRequirementBundle(entry.lead.id);
       setRequirementBundle(bundle);
     } else {
-      const fallbackLead = entry.lead ?? toFallbackLead(entry.submission);
-
-      setLeads((prev) => {
-        if (prev.some((item) => item.id === fallbackLead.id)) return prev;
-        return [fallbackLead, ...prev];
-      });
-
-      const access = await createOrGetClientAccessByLead(fallbackLead);
+      const access = await createOrGetClientAccessByLead(entry.lead);
       setRequirementBundle({
         access,
-        lead: fallbackLead,
+        lead: entry.lead,
         intake: entry.submission,
         requirements: null,
         meeting: null,
@@ -957,9 +868,6 @@ export function RequirementsPage() {
       return;
     }
 
-    setLockPin("");
-    setConfirmLockPin("");
-    setLockAgreement(false);
     setIsLocking(true);
 
     if (!readyToLock) {
@@ -970,116 +878,42 @@ export function RequirementsPage() {
   };
 
   const handleConfirmLock = async () => {
-    if (!selectedLead || !lockPin || lockPin !== confirmLockPin || !lockAgreement) return;
+    if (!selectedLead || !password) return;
     const leadId = selectedLead.id;
-    const session = await getAuthSession();
-    const actorName = session?.name || session?.employeeName || session?.email || session?.role || "Admin";
-    toast.info("Locking requirement...", { description: "Freezing the final version and creating the snapshot." });
+    toast.info("Locking requirement...", { description: "Securing final version." });
     try {
-      const result = await lockLeadRequirements(leadId, { password: lockPin, confirmPassword: confirmLockPin });
+      await lockLeadRequirements(leadId, { password, confirmPassword: password });
       const bundle = await fetchLeadRequirementBundle(leadId);
       setRequirementBundle(bundle);
-      const lockedVersion = result.lockedVersion ?? finalVersionSnapshot;
-      const lockedAt = result.lockedAt ? new Date(result.lockedAt).getTime() : Date.now();
-      setRequirementAudit((prev) => ({
-        ...prev,
-        [String(leadId)]: [
-          ...(prev[String(leadId)] ?? []),
-          {
-            id: `lock-${leadId}-${lockedAt}`,
-            leadId: String(leadId),
-            action: "locked",
-            actor: actorName,
-            role: session?.role ?? "admin",
-            at: lockedAt,
-            version: lockedVersion,
-            score: result.lockScore ?? lockScore,
-            notes: [...(result.missing ?? lockMissing)],
-          },
-        ],
-      }));
-      toast.success("Requirement locked", { description: `Final version v${lockedVersion} is secured.` });
+      toast.success("Requirement locked", { description: `Version ${finalVersion} is secured.` });
     } catch (err) {
-      const error = err as { message?: string; status?: number; details?: { data?: { blockedUntil?: string; failedAttempts?: number } } };
-      if (error.status === 423 && error.details?.data?.blockedUntil) {
-        toast.error("Requirement temporarily protected", {
-          description: "Try again in 15 minutes after the failed unlock window clears.",
-        });
-      } else {
-        toast.error("Lock failed", { description: error.message || "Unable to lock requirement." });
-      }
+      toast.error("Lock failed", { description: (err as Error).message });
     } finally {
       setIsLocking(false);
-      setLockPin("");
-      setConfirmLockPin("");
-      setLockAgreement(false);
+      setPassword("");
     }
   };
 
   const handleUnlock = async () => {
     if (!selectedLead || !isAdmin) return;
-    setUnlockPin("");
     setIsUnlocking(true);
   };
 
-  const handleConfirmUnlock = async (override = false) => {
-    if (!selectedLead) return;
-    if (!override && !unlockPin) return;
+  const handleConfirmUnlock = async () => {
+    if (!selectedLead || !password) return;
     const leadId = selectedLead.id;
-    const session = await getAuthSession();
-    const actorName = session?.name || session?.employeeName || session?.email || session?.role || "Admin";
-    toast.info("Unlocking requirement...", { description: override ? "Applying admin override." : "Authenticating PIN and reopening the draft." });
+    toast.info("Unlocking requirement...", { description: "Authenticating..." });
     try {
-      await unlockLeadRequirements(leadId, override ? { override: true } : { password: unlockPin });
+      await unlockLeadRequirements(leadId, { password });
       const bundle = await fetchLeadRequirementBundle(leadId);
       setRequirementBundle(bundle);
-      setRequirementAudit((prev) => ({
-        ...prev,
-        [String(leadId)]: [
-          ...(prev[String(leadId)] ?? []),
-          {
-            id: `unlock-${leadId}-${Date.now()}`,
-            leadId: String(leadId),
-            action: "unlocked",
-            actor: actorName,
-            role: session?.role ?? "admin",
-            at: Date.now(),
-            version: finalVersionSnapshot,
-            score: lockScore,
-            notes: [override ? "Admin override used" : "Requirement reopened for editing"],
-          },
-        ],
-      }));
       toast.success("Requirement unlocked", { description: "You can now edit the requirement." });
     } catch (err) {
-      const error = err as { message?: string; status?: number; details?: { data?: { blockedUntil?: string; failedAttempts?: number; maxAttempts?: number } } };
-      if (error.status === 423 && error.details?.data?.blockedUntil) {
-        toast.error("Requirement temporarily protected", {
-          description: "Try again in 15 minutes.",
-        });
-      } else if (error.status === 401 && error.details?.data?.failedAttempts) {
-        toast.error("Unlock failed", {
-          description: `Incorrect PIN. Attempt ${error.details.data.failedAttempts}/${error.details.data.maxAttempts ?? 3}.`,
-        });
-      } else {
-        toast.error("Unlock failed", { description: error.message || "Unable to unlock requirement." });
-      }
+      toast.error("Unlock failed", { description: (err as Error).message });
     } finally {
       setIsUnlocking(false);
-      setUnlockPin("");
+      setPassword("");
     }
-  };
-
-  const handleSendProposal = () => {
-    if (!selectedLead || !studioLocked) return;
-    navigate(`/proposal/${selectedLead.id}`);
-    toast.success("Proposal workspace opened", { description: "Use the locked requirement version to finalize the proposal." });
-  };
-
-  const handleDownloadPdf = () => {
-    if (!studioLocked) return;
-    window.print();
-    toast.info("PDF export opened", { description: "Use your browser's print dialog to save the locked snapshot as PDF." });
   };
 
   const handleConvertToProject = async () => {
@@ -1095,9 +929,8 @@ export function RequirementsPage() {
   };
 
   const handleGenerateTasks = async () => {
-    if (!selectedLead || !studioLocked) return;
-    toast.success("Frozen requirement handed off", { description: "Open the tasks workspace to work from the locked version." });
-    navigate("/tasks");
+    if (!selectedLead) return;
+    toast.info("Task generation not implemented", { description: "This feature is coming soon." });
   };
 
   const handleResendLink = async () => {
@@ -1146,6 +979,19 @@ export function RequirementsPage() {
     } finally {
       setIsRefiningAi(false);
     }
+  };
+
+  const inferUsers = (submission: ClientIntakeSubmission) => {
+    if (submission.form.userRoles.length) return submission.form.userRoles.join(", ");
+    if (submission.form.targetAudience) return submission.form.targetAudience;
+    return "General users";
+  };
+
+  const inferPriorityNarrative = (submission: ClientIntakeSubmission) => {
+    const priority = submission.form.priority;
+    if (priority === "urgent") return "Urgent launch to capture market opportunity";
+    if (priority === "low") return "Exploratory build, flexible timeline";
+    return "Standard development cycle, balancing speed and quality";
   };
 
   return (
@@ -1244,24 +1090,18 @@ export function RequirementsPage() {
 
               {studioLocked ? (
                 <section className="rounded-2xl border border-emerald-400/25 bg-emerald-500/10 p-5 text-emerald-50">
-                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
                       <p className="flex items-center gap-2 text-base font-semibold">
                         <Lock className="h-4 w-4" /> Requirement Locked
                       </p>
                       <p className="mt-1 text-sm text-emerald-50/80">
-                        Final Version v{finalVersionSnapshot} · Locked by {lockSnapshot?.lockedBy || "Admin"} · Audit trail active
+                        Final Version (v{finalVersion}) · Secured with password{lockSnapshot?.lockedBy ? ` · Locked by ${lockSnapshot.lockedBy}` : ""}
                       </p>
-                      <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-medium uppercase tracking-[0.14em] text-emerald-50/85">
-                        <span className="rounded-full border border-emerald-100/20 bg-white/10 px-2 py-1">Proposal Generated</span>
-                        <span className="rounded-full border border-emerald-100/20 bg-white/10 px-2 py-1">Tasks Generated</span>
-                        <span className="rounded-full border border-emerald-100/20 bg-white/10 px-2 py-1">Project Handoff Ready</span>
-                      </div>
                     </div>
                     <div className="text-sm text-emerald-50/80">
                       <p>Locked at {lockSnapshot?.lockedAt ? formatDateTime(lockSnapshot.lockedAt) : "Not available"}</p>
-                      <p>Frozen copy stored for execution handoff</p>
-                      <p className="mt-1 text-xs text-emerald-100/70">Unlock attempts: {lockSnapshot?.unlockFailedAttempts ?? 0}</p>
+                      <p>Audit trail captured for execution handoff</p>
                     </div>
                   </div>
                 </section>
@@ -1667,12 +1507,18 @@ export function RequirementsPage() {
                   </div>
                 </div>
                 <div className="mt-5 flex flex-wrap gap-3">
-                  <Button onClick={handleGenerateTasks} disabled={!hasLinkedLead || !studioLocked} className="bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50">
+                  <Button onClick={handleGenerateTasks} disabled={!hasLinkedLead} className="bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50">
                     <SquareStack className="mr-2 h-4 w-4" /> Generate Tasks
                   </Button>
-                  <Button variant="outline" className="border-white/25 bg-white/5 text-white hover:bg-white/10" onClick={handleOpenEditStudio}>
-                    <Pencil className="mr-2 h-4 w-4" /> {studioLocked ? (isAdmin ? "Unlock to Edit" : "View Only") : "Edit"}
-                  </Button>
+                  {!studioLocked ? (
+                    <Button variant="outline" className="border-white/25 bg-white/5 text-white hover:bg-white/10" onClick={handleOpenEditStudio}>
+                      <Pencil className="mr-2 h-4 w-4" /> Edit
+                    </Button>
+                  ) : (
+                    <Button variant="outline" className="border-white/25 bg-white/5 text-white hover:bg-white/10" onClick={handleOpenEditStudio}>
+                      <Pencil className="mr-2 h-4 w-4" /> View Only
+                    </Button>
+                  )}
                   {!studioLocked ? (
                     <Button
                       variant="outline"
@@ -1687,30 +1533,10 @@ export function RequirementsPage() {
                     variant="outline"
                     className="border-white/25 bg-white/5 text-white hover:bg-white/10 disabled:opacity-50"
                     onClick={handleConvertToProject}
-                    disabled={!hasLinkedLead || !studioLocked}
+                    disabled={!hasLinkedLead}
                   >
                     <Rocket className="mr-2 h-4 w-4" /> Convert to Project
                   </Button>
-                  {studioLocked ? (
-                    <>
-                      <Button
-                        variant="outline"
-                        className="border-white/25 bg-white/5 text-white hover:bg-white/10 disabled:opacity-50"
-                        onClick={handleSendProposal}
-                        disabled={!hasLinkedLead}
-                      >
-                        <ArrowRight className="mr-2 h-4 w-4" /> Send Proposal
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="border-white/25 bg-white/5 text-white hover:bg-white/10 disabled:opacity-50"
-                        onClick={handleDownloadPdf}
-                        disabled={!hasLinkedLead}
-                      >
-                        <FileText className="mr-2 h-4 w-4" /> Download PDF
-                      </Button>
-                    </>
-                  ) : null}
                   {!studioLocked ? (
                     <Button
                       variant="outline"
@@ -1723,7 +1549,7 @@ export function RequirementsPage() {
                   ) : null}
                   {studioLocked && isAdmin ? (
                     <Button variant="outline" className="border-amber-300/40 bg-amber-500/10 text-amber-50 hover:bg-amber-500/20" onClick={handleUnlock}>
-                      <Lock className="mr-2 h-4 w-4" /> Unlock to Edit
+                      <Lock className="mr-2 h-4 w-4" /> Unlock
                     </Button>
                   ) : null}
                   <Button
@@ -1736,16 +1562,6 @@ export function RequirementsPage() {
                   </Button>
                 </div>
                 <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-white/65">
-                  <p className="font-medium text-white/80">Audit trail</p>
-                  <div className="mt-2 space-y-1.5">
-                    {auditTrail.length ? auditTrail.slice(-3).reverse().map((entry) => (
-                      <p key={entry.id}>
-                        {entry.action === "locked" ? "Locked" : "Unlocked"} by {entry.actor} · v{entry.version} · {formatRelativeTime(entry.at)}
-                      </p>
-                    )) : <p>No local audit entries recorded yet.</p>}
-                  </div>
-                </div>
-                <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-white/65">
                   <p>Lifecycle: Pending → Submitted → Verified → Locked</p>
                   <p className="mt-1">
                     Access: {requirementBundle?.clientLink?.id || requirementBundle?.intake?.id || "Not available"} · Intake link: {selectedLead ? getClientIntakeLinkForLead(selectedLead).replace(/^https?:\/\//, "") : "Not available"}
@@ -1759,15 +1575,14 @@ export function RequirementsPage() {
       </div>
 
       <Dialog open={isRefining} onOpenChange={setIsRefining}>
-        <DialogContent className="max-w-7xl">
+        <DialogContent className="max-w-7xl bg-[#0a1224] text-white border-blue-400/30">
           <DialogHeader>
             <DialogTitle>Requirement Refinement Studio</DialogTitle>
             <DialogDescription>
               {studioLocked ? "Viewing locked requirement. Unlock to make changes." : "Refine and lock the client's project requirements."}
             </DialogDescription>
           </DialogHeader>
-          <div className="overflow-y-auto px-6 flex-1">
-          <div className="grid grid-cols-1 gap-6 p-1 xl:grid-cols-[1.15fr_0.85fr]">
+          <div className="grid max-h-[78vh] grid-cols-1 gap-6 overflow-y-auto p-1 xl:grid-cols-[1.15fr_0.85fr]">
             <div className="space-y-4">
               <section className="rounded-2xl border border-white/10 bg-white/5 p-4">
                 <div className="mb-4 flex items-center justify-between gap-3">
@@ -2007,7 +1822,6 @@ export function RequirementsPage() {
               </section>
             </div>
           </div>
-          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsRefining(false)}>Cancel</Button>
             {!studioLocked ? <Button onClick={handleSaveRefinement} className="bg-blue-600 text-white hover:bg-blue-500">Save Requirement</Button> : null}
@@ -2016,152 +1830,64 @@ export function RequirementsPage() {
       </Dialog>
 
       <Dialog open={isLocking} onOpenChange={setIsLocking}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="bg-[#0a1224] text-white border-blue-400/30">
           <DialogHeader>
-            <DialogTitle>Lock Final Requirement Version</DialogTitle>
+            <DialogTitle>Lock Requirement</DialogTitle>
             <DialogDescription>
-              You are about to freeze this requirement for project execution. Editing will be disabled after locking.
+              Enter a password to lock this requirement. This action is reversible only by an admin.
             </DialogDescription>
           </DialogHeader>
-          
-          <div className="overflow-y-auto px-6 flex-1">
-          {selectedSubmission ? (
-            <div className="space-y-4">
-              <section className="rounded-lg border border-white/10 bg-white/5 p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <p className="font-semibold text-white">Requirement Readiness</p>
-                  <Badge variant="outline" className={readyToLock ? "border-emerald-300/30 bg-emerald-500/10 text-emerald-100" : "border-amber-300/30 bg-amber-500/10 text-amber-100"}>
-                    {readyToLock ? "Ready to Lock" : "Needs Review"}
-                  </Badge>
-                </div>
-                <div className="mb-3 space-y-1">
-                  <p className="text-sm text-white/80">Readiness: {lockReadinessPercent}%</p>
-                  <p className="text-xs text-white/60">Score: {lockScore}% | Completeness: {completeness?.percent || 0}% | AI: {aiConfidence}%</p>
-                </div>
-                <div className="space-y-2">
-                  {lockValidationChecks.filter((c) => c.required).map((check) => (
-                    <div key={check.label} className="flex gap-2 text-sm">
-                      <Check className={`h-4 w-4 flex-shrink-0 ${check.ok ? "text-emerald-300" : "text-amber-300"}`} />
-                      <span className="text-white/80">{check.label}</span>
-                    </div>
-                  ))}
-                </div>
-                {!readyToLock && lockMissing?.length > 0 && (
-                  <div className="mt-3 rounded bg-rose-500/10 p-3">
-                    <p className="text-xs font-semibold text-rose-100">Required to proceed:</p>
-                    <ul className="mt-1 space-y-1">
-                      {lockMissing.map((item) => (
-                        <li key={item} className="text-xs text-rose-100/80">• {item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </section>
-
-              <section className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-cyan-100 mb-2 uppercase tracking-wider">
-                    4-Digit Lock PIN
-                  </label>
-                  <Input
-                    type="password"
-                    value={lockPin}
-                    onChange={(e) => setLockPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                    placeholder="0000"
-                    inputMode="numeric"
-                    maxLength={4}
-                    className="bg-black/40 border-white/20 text-white tracking-widest"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-cyan-100 mb-2 uppercase tracking-wider">
-                    Confirm PIN
-                  </label>
-                  <Input
-                    type="password"
-                    value={confirmLockPin}
-                    onChange={(e) => setConfirmLockPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                    placeholder="0000"
-                    inputMode="numeric"
-                    maxLength={4}
-                    className="bg-black/40 border-white/20 text-white tracking-widest"
-                  />
-                  {lockPin && confirmLockPin && lockPin !== confirmLockPin && (
-                    <p className="mt-1 text-xs text-amber-200">PINs do not match</p>
-                  )}
-                </div>
-
-                <div className="flex items-start gap-3 rounded border border-white/10 bg-black/40 p-3">
-                  <Checkbox 
-                    id="agreement" 
-                    checked={lockAgreement}
-                    onCheckedChange={(checked) => setLockAgreement(Boolean(checked))}
-                    className="mt-1"
-                  />
-                  <label htmlFor="agreement" className="text-sm text-white/80 cursor-pointer">
-                    I understand that locking freezes this requirement. Editing will be disabled.
-                  </label>
-                </div>
-              </section>
-            </div>
-          ) : (
-            <p className="text-white/80">No requirement selected</p>
-          )}
+          <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white/80">
+            <p className="font-medium text-white">Lock readiness: {readyToLock ? "Ready" : "Needs review"}</p>
+            <p className="mt-1 text-xs text-white/60">Score {lockScore}% · Completeness {completeness.percent}%</p>
+            {!readyToLock ? (
+              <ul className="mt-2 space-y-1 text-xs text-amber-100/90">
+                {lockMissing.slice(0, 4).map((item) => (
+                  <li key={item}>• {item}</li>
+                ))}
+              </ul>
+            ) : null}
           </div>
-
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setIsLocking(false)}>
-              Cancel
-            </Button>
-            <Button
-              className="bg-blue-600 hover:bg-blue-500 text-white"
-              onClick={handleConfirmLock}
-              disabled={!selectedSubmission || !readyToLock || !lockAgreement || lockPin.length !== 4 || confirmLockPin.length !== 4 || lockPin !== confirmLockPin}
-            >
-              Lock & Freeze
+          <div className="space-y-2">
+            <Input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter lock password"
+              className="bg-white/5"
+            />
+            <p className="text-xs text-white/60">This password will be required to unlock and edit later.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsLocking(false)}>Cancel</Button>
+            <Button onClick={handleConfirmLock} className="bg-blue-600 text-white hover:bg-blue-500" disabled={!readyToLock || !password}>
+              Confirm Lock
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={isUnlocking} onOpenChange={setIsUnlocking}>
-        <DialogContent className="max-w-xl">
+        <DialogContent className="bg-[#0a1224] text-white border-blue-400/30">
           <DialogHeader>
-            <DialogTitle>Unlock Requirement Version</DialogTitle>
+            <DialogTitle>Unlock Requirement</DialogTitle>
             <DialogDescription>
-              Enter the lock PIN or use admin override to reopen editing.
+              Enter the password to unlock and allow editing.
             </DialogDescription>
           </DialogHeader>
-          <div className="overflow-y-auto px-6 flex-1">
-          <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
-            <p className="text-sm text-white/80">Locked version v{finalVersionSnapshot}</p>
-            <p className="text-xs text-white/60">Failed attempts: {lockSnapshot?.unlockFailedAttempts ?? 0}</p>
-            {lockSnapshot?.unlockBlockedUntil ? (
-              <p className="text-xs text-amber-200">Temporarily protected until {formatDateTime(lockSnapshot.unlockBlockedUntil)}</p>
-            ) : null}
+          <div className="space-y-2">
             <Input
               type="password"
-              value={unlockPin}
-              onChange={(e) => setUnlockPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
-              placeholder="Enter lock PIN"
-              inputMode="numeric"
-              maxLength={4}
-              className="bg-white/5 tracking-[0.4em]"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter lock password"
+              className="bg-white/5"
             />
           </div>
-          </div>
           <DialogFooter>
-              <Button variant="outline" onClick={() => setIsUnlocking(false)}>Cancel</Button>
-              {isAdmin ? (
-                <Button variant="outline" className="border-amber-300/40 bg-amber-500/10 text-amber-50 hover:bg-amber-500/20" onClick={() => handleConfirmUnlock(true)}>
-                  Admin Override
-                </Button>
-              ) : null}
-              <Button onClick={() => handleConfirmUnlock(false)} className="bg-amber-500 text-white hover:bg-amber-400" disabled={unlockPin.length !== 4}>
-                Unlock
-              </Button>
-            </DialogFooter>
+            <Button variant="outline" onClick={() => setIsUnlocking(false)}>Cancel</Button>
+            <Button onClick={handleConfirmUnlock} className="bg-amber-500 text-white hover:bg-amber-400">Confirm Unlock</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </DashboardLayout>
